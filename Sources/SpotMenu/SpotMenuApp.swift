@@ -2,6 +2,12 @@ import AppKit
 import Combine
 import SwiftUI
 
+private enum PopoverLayout {
+    static let width: CGFloat = 432
+    static let expandedHeight: CGFloat = 690
+    static let compactHeight: CGFloat = 156
+}
+
 @main struct SpotMenuApp: App {
     @NSApplicationDelegateAdaptor(SpotMenuDelegate.self) private var appDelegate
     var body: some Scene {
@@ -12,14 +18,14 @@ import SwiftUI
 @MainActor final class SpotMenuDelegate: NSObject, NSApplicationDelegate {
     private let spotify = SpotifyService()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let popover = NSPopover()
+    private let compactPopover = NSPopover()
+    private let expandedPopover = NSPopover()
     private var subscriptions = Set<AnyCancellable>()
+    private var activePopover: NSPopover { spotify.compact && spotify.connected ? compactPopover : expandedPopover }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        popover.behavior = .transient
-        popover.animates = false
-        popover.contentSize = NSSize(width: 432, height: 690)
-        popover.contentViewController = NSHostingController(rootView: ContentView().environmentObject(spotify))
+        configure(expandedPopover, compact: false)
+        configure(compactPopover, compact: true)
 
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "music.note", accessibilityDescription: "SpotMenu")
@@ -29,8 +35,9 @@ import SwiftUI
 
         spotify.$compact.combineLatest(spotify.$connected)
             .dropFirst()
-            .sink { [weak self] compact, connected in
-                self?.resizePopover(to: NSSize(width: 432, height: compact && connected ? 140 : 690))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in
+                self?.switchPopoverIfNeeded()
             }
             .store(in: &subscriptions)
         spotify.$playback
@@ -44,21 +51,34 @@ import SwiftUI
     }
 
     @objc private func togglePopover() {
-        if popover.isShown { popover.performClose(nil) }
-        else { showPopover() }
+        if compactPopover.isShown { compactPopover.performClose(nil) }
+        else if expandedPopover.isShown { expandedPopover.performClose(nil) }
+        else { showPopover(activePopover) }
     }
 
-    private func showPopover() {
+    private func configure(_ popover: NSPopover, compact: Bool) {
+        popover.behavior = .transient
+        popover.animates = false
+        popover.contentSize = NSSize(width: PopoverLayout.width, height: compact ? PopoverLayout.compactHeight : PopoverLayout.expandedHeight)
+        popover.contentViewController = NSHostingController(rootView: ContentView(compactPresentation: compact).environmentObject(spotify))
+    }
+
+    private func showPopover(_ popover: NSPopover) {
         guard let button = statusItem.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
-    private func resizePopover(to size: NSSize) {
-        guard popover.contentSize != size else { return }
-        let wasShown = popover.isShown
-        if wasShown { popover.close() }
-        popover.contentSize = size
-        if wasShown { DispatchQueue.main.async { [weak self] in self?.showPopover() } }
+    private func switchPopoverIfNeeded() {
+        let target = activePopover
+        let old = target === compactPopover ? expandedPopover : compactPopover
+        guard old.isShown else { return }
+        old.close()
+        // Each popover has a fixed hosting view and size. Show only the latest mode
+        // after AppKit has finished closing the old window.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.activePopover === target, !target.isShown else { return }
+            self.showPopover(target)
+        }
     }
 }
 
@@ -84,15 +104,14 @@ private enum Tab: String, CaseIterable {
 
 private struct ContentView: View {
     @EnvironmentObject private var spotify: SpotifyService
+    let compactPresentation: Bool
     @State private var tab: Tab = .home
-    @State private var settings = false
     @State private var devices = false
     @State private var query = ""
-    @State private var seekValue = 0.0
-    @State private var seeking = false
     @State private var volumeValue = 50.0
-    @State private var clock = Date()
-    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State private var isVisible = false
+    @State private var expandedContentID = UUID()
+    private let playbackPoll = Timer.publish(every: 8, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -101,18 +120,22 @@ private struct ContentView: View {
                 .ignoresSafeArea()
             if spotify.connected { connectedView } else { onboarding }
         }
-        .frame(width: 432, height: spotify.compact && spotify.connected ? 140 : 690)
+        .frame(width: PopoverLayout.width, height: compactPresentation ? PopoverLayout.compactHeight : PopoverLayout.expandedHeight, alignment: .top)
         .preferredColorScheme(.dark)
         .foregroundStyle(.white)
-        .onReceive(ticker) {
-            clock = $0
-            if spotify.playback?.is_playing == true && !seeking { seekValue += 1000 }
-            if Int(clock.timeIntervalSince1970) % 8 == 0 { Task { await spotify.refreshPlayback() } }
+        .onAppear {
+            isVisible = true
+            Task { await spotify.refreshPlayback() }
         }
-        .onChange(of: spotify.playback?.item?.stableID) { _, _ in seekValue = Double(spotify.playback?.progress_ms ?? 0); volumeValue = Double(spotify.playback?.device?.volume_percent ?? 50) }
-        .onChange(of: spotify.playback?.progress_ms) { _, value in if !seeking { seekValue = Double(value ?? 0) } }
+        .onDisappear { isVisible = false }
+        .onReceive(playbackPoll) { _ in
+            if isVisible { Task { await spotify.refreshPlayback() } }
+        }
+        .onChange(of: spotify.playback?.device?.volume_percent) { _, value in volumeValue = Double(value ?? 50) }
+        .onChange(of: spotify.compact) { _, _ in expandedContentID = UUID() }
         .onChange(of: tab) { _, newValue in
-            withAnimation(.snappy(duration: 0.35)) { spotify.detailTitle = nil }
+            withAnimation(.snappy(duration: 0.35)) { spotify.closeDetail() }
+            expandedContentID = UUID()
             if newValue == .queue { Task { await spotify.loadQueue() } }
         }
     }
@@ -120,11 +143,11 @@ private struct ContentView: View {
     private var connectedView: some View {
         VStack(spacing: 0) {
             header
-            if spotify.compact {
+            if compactPresentation {
                 compactPlayer
             } else {
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
+                    LazyVStack(alignment: .leading, spacing: 22) {
                         player
                         if let error = spotify.error { errorBanner(error) }
                         if let title = spotify.detailTitle { detailView(title) }
@@ -139,12 +162,14 @@ private struct ContentView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 22)
+                    .frame(maxWidth: .infinity)
                 }
+                .id(expandedContentID)
                 tabBar
             }
         }
         .overlay(alignment: .top) {
-            if settings { settingsSheet.transition(.move(edge: .top).combined(with: .opacity)).zIndex(2) }
+            if !compactPresentation && spotify.showingSettings { settingsSheet.transition(.move(edge: .top).combined(with: .opacity)).zIndex(2) }
             if devices { deviceSheet.transition(.move(edge: .top).combined(with: .opacity)).zIndex(2) }
         }
     }
@@ -158,9 +183,16 @@ private struct ContentView: View {
             Text("spotmenu").font(.system(size: 18, weight: .heavy, design: .rounded)).tracking(-0.8)
             Spacer()
             if spotify.playback?.is_playing == true { Equalizer().frame(width: 18, height: 16).padding(.trailing, 4) }
-            headerButton("arrow.clockwise") { Task { await spotify.refreshAll() } }
-            headerButton(spotify.compact ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left") { withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { spotify.compact.toggle() } }
-            headerButton("gearshape") { withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) { spotify.compact = false; settings = true } }
+            if spotify.busy {
+                ProgressView().controlSize(.small).tint(Palette.green).frame(width: 28, height: 28)
+            } else {
+                headerButton("arrow.clockwise") { Task { await spotify.refreshAll() } }
+            }
+            headerButton(compactPresentation ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left") { spotify.compact.toggle() }
+            headerButton("gearshape") {
+                spotify.showingSettings = true
+                spotify.compact = false
+            }
         }
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 15)
     }
@@ -218,17 +250,7 @@ private struct ContentView: View {
                 control(spotify.playback?.repeat_state == "track" ? "repeat.1" : "repeat", active: spotify.playback?.repeat_state != "off" && spotify.playback?.repeat_state != nil, size: 17) { Task { await spotify.repeatMode() } }
             }.frame(maxWidth: .infinity)
 
-            VStack(spacing: 4) {
-                Slider(value: $seekValue, in: 0...Double(max(spotify.playback?.item?.duration_ms ?? 1, 1)), onEditingChanged: { editing in
-                    seeking = editing
-                    if !editing { Task { await spotify.seek(Int(seekValue)) } }
-                }).tint(Palette.green).disabled(spotify.playback?.item == nil)
-                HStack {
-                    Text(timeString(Int(seeking ? seekValue : Double(spotify.playback?.progress_ms ?? 0))))
-                    Spacer()
-                    Text(timeString(spotify.playback?.item?.duration_ms ?? 0))
-                }.font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(Palette.muted)
-            }
+            SeekBar(playback: spotify.playback)
             HStack(spacing: 12) {
                 Button { Task { await spotify.loadDevices() }; withAnimation(.spring()) { devices = true } } label: {
                     HStack(spacing: 6) {
@@ -274,7 +296,7 @@ private struct ContentView: View {
     }
 
     private var homeView: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        LazyVStack(alignment: .leading, spacing: 20) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("YOUR SPACE").font(.system(size: 10, weight: .heavy)).tracking(2).foregroundStyle(Palette.green)
@@ -286,7 +308,7 @@ private struct ContentView: View {
             if !spotify.playlists.isEmpty {
                 sectionHeading("Your playlists", icon: "square.stack")
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 11) {
+                    LazyHStack(spacing: 11) {
                         ForEach(spotify.playlists.prefix(10), id: \.stableID) { playlist in
                             Button { Task { await spotify.openPlaylist(playlist) } } label: {
                                 VStack(alignment: .leading, spacing: 8) {
@@ -311,7 +333,7 @@ private struct ContentView: View {
     }
 
     private var searchView: some View {
-        VStack(alignment: .leading, spacing: 17) {
+        LazyVStack(alignment: .leading, spacing: 17) {
             Text("Find your next favorite").font(.system(size: 22, weight: .bold, design: .rounded))
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Palette.green)
@@ -321,6 +343,12 @@ private struct ContentView: View {
                 if !query.isEmpty { Button { query = ""; spotify.searchFor("") } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(Palette.muted) }
             }.padding(13).background(Palette.raised, in: RoundedRectangle(cornerRadius: 13))
             if query.isEmpty { emptyState("Search all of Spotify", "Every track, album, artist and playlist is a few keystrokes away.", "sparkle.magnifyingglass") }
+            if spotify.searching {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small).tint(Palette.green)
+                    Text("Searching Spotify…").font(.system(size: 11)).foregroundStyle(Palette.muted)
+                }.padding(.vertical, 8)
+            }
             if let results = spotify.search {
                 if let tracks = results.tracks?.items, !tracks.isEmpty {
                     sectionHeading("Tracks", icon: "music.note")
@@ -352,7 +380,7 @@ private struct ContentView: View {
     }
 
     private var libraryView: some View {
-        VStack(alignment: .leading, spacing: 17) {
+        LazyVStack(alignment: .leading, spacing: 17) {
             Text("Your library").font(.system(size: 22, weight: .bold, design: .rounded))
             if !spotify.playlists.isEmpty {
                 sectionHeading("Playlists", icon: "square.stack")
@@ -367,7 +395,7 @@ private struct ContentView: View {
     }
 
     private var queueView: some View {
-        VStack(alignment: .leading, spacing: 17) {
+        LazyVStack(alignment: .leading, spacing: 17) {
             HStack {
                 Text("Up next").font(.system(size: 22, weight: .bold, design: .rounded))
                 Spacer()
@@ -379,8 +407,8 @@ private struct ContentView: View {
     }
 
     private func detailView(_ title: String) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Button { withAnimation(.snappy) { spotify.detailTitle = nil } } label: { Label("Back", systemImage: "chevron.left").foregroundStyle(Palette.green) }.buttonStyle(.plain)
+        LazyVStack(alignment: .leading, spacing: 16) {
+            Button { withAnimation(.snappy) { spotify.closeDetail() } } label: { Label("Back", systemImage: "chevron.left").foregroundStyle(Palette.green) }.buttonStyle(.plain)
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("COLLECTION").font(.system(size: 10, weight: .bold)).tracking(2).foregroundStyle(Palette.green)
@@ -397,8 +425,21 @@ private struct ContentView: View {
     }
 
     private func trackRow(_ track: Track) -> some View {
-        HStack(spacing: 10) {
-            Button { Task { await spotify.play(track) } } label: { mediaRow(title: track.name, subtitle: track.artistLine, url: track.imageURL) }.buttonStyle(.plain)
+        HStack(spacing: 4) {
+            Button { Task { await spotify.play(track) } } label: {
+                HStack(spacing: 11) {
+                    CoverArt(url: track.imageURL, size: 43, radius: 7)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(track.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text(track.artistLine).font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
             Menu {
                 Button("Play now", systemImage: "play.fill") { Task { await spotify.play(track) } }
                 Button("Add to queue", systemImage: "text.badge.plus") { Task { await spotify.addToQueue(track) } }
@@ -407,9 +448,20 @@ private struct ContentView: View {
                 if let id = track.id, let url = URL(string: "https://open.spotify.com/track/\(id)") {
                     Button("Open in Spotify", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(url) }
                 }
-            } label: { Image(systemName: "ellipsis").font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.muted).frame(width: 25, height: 40) }
-            .menuStyle(.borderlessButton)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Palette.muted)
+                    .frame(width: 30, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .menuIndicator(.hidden)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(width: 30)
         }
+        .padding(7)
+        .frame(maxWidth: .infinity)
+        .background(Palette.raised.opacity(0.76), in: RoundedRectangle(cornerRadius: 13))
     }
 
     private func mediaRow(title: String, subtitle: String, url: URL?) -> some View {
@@ -493,11 +545,11 @@ private struct ContentView: View {
     }
 
     private var settingsSheet: some View {
-        sheetFrame("Settings", close: { withAnimation(.spring()) { settings = false } }) {
+        sheetFrame("Settings", close: { withAnimation(.spring()) { spotify.showingSettings = false } }) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack { Image(systemName: "person.crop.circle.fill").font(.system(size: 34)).foregroundStyle(Palette.green); VStack(alignment: .leading) { Text(spotify.profile?.display_name ?? "Spotify account").font(.headline); Text(spotify.profile?.product?.capitalized ?? "Connected").font(.caption).foregroundStyle(Palette.muted) }; Spacer() }
                 VStack(alignment: .leading, spacing: 6) { Text("CLIENT ID").font(.system(size: 10, weight: .bold)).tracking(1.5).foregroundStyle(Palette.green); Text(spotify.clientID).font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted).textSelection(.enabled) }
-                Button("Disconnect Spotify") { spotify.disconnect(); withAnimation { settings = false } }.buttonStyle(.plain).foregroundStyle(.red.opacity(0.9))
+                Button("Disconnect Spotify") { spotify.disconnect(); withAnimation { spotify.showingSettings = false } }.buttonStyle(.plain).foregroundStyle(.red.opacity(0.9))
                 Spacer()
                 Button("Quit SpotMenu") { NSApplication.shared.terminate(nil) }.buttonStyle(.plain).foregroundStyle(Palette.muted)
             }
@@ -537,7 +589,45 @@ private struct ContentView: View {
             .foregroundStyle(Color(red: 1, green: 0.72, blue: 0.67)).padding(11).background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
     }
 
-    private func timeString(_ milliseconds: Int) -> String { let seconds = max(milliseconds / 1000, 0); return String(format: "%d:%02d", seconds / 60, seconds % 60) }
+}
+
+private struct SeekBar: View {
+    @EnvironmentObject private var spotify: SpotifyService
+    let playback: Playback?
+    @State private var position = 0.0
+    @State private var seeking = false
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Slider(value: $position, in: 0...Double(max(playback?.item?.duration_ms ?? 1, 1)), onEditingChanged: { editing in
+                seeking = editing
+                if !editing { Task { await spotify.seek(Int(position)) } }
+            })
+            .tint(Palette.green)
+            .disabled(playback?.item == nil)
+            HStack {
+                Text(timeString(Int(position)))
+                Spacer()
+                Text(timeString(playback?.item?.duration_ms ?? 0))
+            }
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(Palette.muted)
+        }
+        .onAppear { position = Double(playback?.progress_ms ?? 0) }
+        .onChange(of: playback?.item?.stableID) { _, _ in position = Double(playback?.progress_ms ?? 0) }
+        .onChange(of: playback?.progress_ms) { _, value in if !seeking { position = Double(value ?? 0) } }
+        .onReceive(ticker) { _ in
+            if playback?.is_playing == true && !seeking {
+                position = min(position + 1000, Double(playback?.item?.duration_ms ?? 0))
+            }
+        }
+    }
+
+    private func timeString(_ milliseconds: Int) -> String {
+        let seconds = max(milliseconds / 1000, 0)
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
 }
 
 private struct CoverArt: View {

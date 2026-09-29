@@ -16,11 +16,13 @@ import Security
     @Published var recent: [Track] = []
     @Published var topTracks: [Track] = []
     @Published var search: SearchResults?
+    @Published var searching = false
     @Published var queue: [Track] = []
     @Published var devices: [Device] = []
     @Published var detailTitle: String?
     @Published var detailTracks: [Track] = []
     @Published var compact = false
+    @Published var showingSettings = false
 
     private let redirect = "http://127.0.0.1:8888/callback"
     private let scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing user-library-read user-library-modify playlist-read-private playlist-read-collaborative user-read-recently-played user-top-read"
@@ -31,6 +33,9 @@ import Security
     private var expectedState: String?
     private var listener: NWListener?
     private var searchTask: Task<Void, Never>?
+    private var refreshTask: Task<TokenResponse, Error>?
+    private var playbackRequestID = 0
+    private var detailRequestID = 0
 
     init() {
         refreshToken = Keychain.read("refreshToken")
@@ -129,12 +134,16 @@ import Security
     private func validToken() async throws -> String {
         if let accessToken, Date() < expiresAt { return accessToken }
         guard let refreshToken else { throw APIError.message("Connect Spotify to continue.") }
-        let token = try await tokenRequest(["grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": clientID])
+        if let refreshTask { return try await refreshTask.value.access_token }
+        let task = Task { try await tokenRequest(["grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": clientID]) }
+        refreshTask = task
+        defer { refreshTask = nil }
+        let token = try await task.value
         store(token)
         return token.access_token
     }
 
-    private func request<T: Decodable>(_ path: String, method: String = "GET", query: [URLQueryItem] = [], body: Data? = nil) async throws -> T? {
+    private func request<T: Decodable & Sendable>(_ path: String, method: String = "GET", query: [URLQueryItem] = [], body: Data? = nil) async throws -> T? {
         var components = URLComponents(string: "https://api.spotify.com/v1" + path)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!)
@@ -160,11 +169,18 @@ import Security
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private struct Empty: Decodable {}
-    private func send(_ path: String, method: String, query: [URLQueryItem] = [], body: Data? = nil, localFallback: String? = nil) async {
-        do { let _: Empty? = try await request(path, method: method, query: query, body: body); error = nil; await refreshPlayback() }
+    private struct Empty: Decodable, Sendable {}
+    private func send(_ path: String, method: String, query: [URLQueryItem] = [], body: Data? = nil, localFallback: String? = nil, refreshAfter: Bool = true) async {
+        do {
+            let _: Empty? = try await request(path, method: method, query: query, body: body)
+            error = nil
+            if refreshAfter { await refreshPlayback() }
+        }
         catch {
-            if let localFallback, runLocal(localFallback) { self.error = nil; await refreshPlayback() }
+            if let localFallback, runLocal(localFallback) {
+                self.error = nil
+                if refreshAfter { await refreshPlayback() }
+            }
             else { self.error = error.localizedDescription }
         }
     }
@@ -177,20 +193,31 @@ import Security
     }
 
     func refreshAll() async {
-        guard connected else { return }
+        guard connected && !busy else { return }
         busy = true
-        await refreshPlayback()
-        do { profile = try await request("/me") as Profile? } catch { self.error = error.localizedDescription }
-        do { playlists = try await (request("/me/playlists", query: [.init(name: "limit", value: "30")]) as Page<Playlist>?)?.items ?? [] } catch { self.error = error.localizedDescription }
-        do { saved = try await (request("/me/tracks", query: [.init(name: "limit", value: "30")]) as Page<SavedTrack>?)?.items.map(\.track) ?? [] } catch { self.error = error.localizedDescription }
-        do { recent = try await (request("/me/player/recently-played", query: [.init(name: "limit", value: "20")]) as Page<RecentTrack>?)?.items.map(\.track) ?? [] } catch { self.error = error.localizedDescription }
-        do { topTracks = try await (request("/me/top/tracks", query: [.init(name: "limit", value: "20")]) as Page<Track>?)?.items ?? [] } catch { self.error = error.localizedDescription }
+        async let profileResult: Profile? = request("/me")
+        async let playlistResult: Page<Playlist>? = request("/me/playlists", query: [.init(name: "limit", value: "30")])
+        async let savedResult: Page<SavedTrack>? = request("/me/tracks", query: [.init(name: "limit", value: "30")])
+        async let recentResult: Page<RecentTrack>? = request("/me/player/recently-played", query: [.init(name: "limit", value: "20")])
+        async let topResult: Page<Track>? = request("/me/top/tracks", query: [.init(name: "limit", value: "20")])
+        async let playbackResult: Playback? = request("/me/player")
+        do { profile = try await profileResult } catch { self.error = error.localizedDescription }
+        do { playlists = try await playlistResult?.items ?? [] } catch { self.error = error.localizedDescription }
+        do { saved = try await savedResult?.items.map(\.track) ?? [] } catch { self.error = error.localizedDescription }
+        do { recent = try await recentResult?.items.map(\.track) ?? [] } catch { self.error = error.localizedDescription }
+        do { topTracks = try await topResult?.items ?? [] } catch { self.error = error.localizedDescription }
+        do { playback = try await playbackResult } catch { self.error = error.localizedDescription }
         busy = false
     }
 
     func refreshPlayback() async {
         guard connected else { return }
-        do { playback = try await request("/me/player") as Playback? }
+        playbackRequestID += 1
+        let requestID = playbackRequestID
+        do {
+            let latest: Playback? = try await request("/me/player")
+            if requestID == playbackRequestID { playback = latest }
+        }
         catch { self.error = error.localizedDescription }
     }
 
@@ -204,27 +231,41 @@ import Security
     }
     func searchFor(_ text: String) {
         searchTask?.cancel()
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { search = nil; return }
+        search = nil
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { searching = false; return }
+        searching = true
         searchTask = Task {
-            try? await Task.sleep(for: .milliseconds(320))
+            try? await Task.sleep(for: .milliseconds(260))
             guard !Task.isCancelled else { return }
             do {
-                search = try await request("/search", query: [.init(name: "q", value: text), .init(name: "type", value: "track,album,artist,playlist"), .init(name: "limit", value: "8")])
-            } catch { self.error = error.localizedDescription }
+                let result: SearchResults? = try await request("/search", query: [.init(name: "q", value: query), .init(name: "type", value: "track,album,artist,playlist"), .init(name: "limit", value: "8")])
+                if !Task.isCancelled { search = result; searching = false }
+            } catch { if !Task.isCancelled { self.error = error.localizedDescription; searching = false } }
         }
     }
+    func closeDetail() { detailRequestID += 1; detailTitle = nil; detailTracks = [] }
     func openPlaylist(_ playlist: Playlist) async {
         guard let id = playlist.id else { return }
+        detailRequestID += 1
+        let requestID = detailRequestID
         detailTitle = playlist.name; detailTracks = []
-        do { detailTracks = try await (request("/playlists/\(id)/items", query: [.init(name: "limit", value: "50")]) as Page<PlaylistItem>?)?.items.compactMap(\.resolved) ?? [] }
+        do {
+            let tracks = try await (request("/playlists/\(id)/items", query: [.init(name: "limit", value: "50")]) as Page<PlaylistItem>?)?.items.compactMap(\.resolved) ?? []
+            if requestID == detailRequestID { detailTracks = tracks }
+        }
         catch { self.error = error.localizedDescription }
     }
     func openAlbum(_ album: Album) async {
         guard let id = album.id else { return }
+        detailRequestID += 1
+        let requestID = detailRequestID
         detailTitle = album.name; detailTracks = []
         do {
             let page: Page<Track>? = try await request("/albums/\(id)/tracks", query: [.init(name: "limit", value: "50")])
-            detailTracks = page?.items.map { Track(id: $0.id, name: $0.name, uri: $0.uri, duration_ms: $0.duration_ms, artists: $0.artists, album: album) } ?? []
+            if requestID == detailRequestID {
+                detailTracks = page?.items.map { Track(id: $0.id, name: $0.name, uri: $0.uri, duration_ms: $0.duration_ms, artists: $0.artists, album: album) } ?? []
+            }
         } catch { self.error = error.localizedDescription }
     }
     func play(_ track: Track) async {
@@ -249,7 +290,7 @@ import Security
     }
     func addToQueue(_ track: Track) async {
         guard let uri = track.uri else { return }
-        await send("/me/player/queue", method: "POST", query: [.init(name: "uri", value: uri)])
+        await send("/me/player/queue", method: "POST", query: [.init(name: "uri", value: uri)], refreshAfter: false)
         await loadQueue()
     }
     func transfer(to device: Device) async {
@@ -260,7 +301,7 @@ import Security
     }
     func save(_ track: Track, saved isSaved: Bool) async {
         guard let id = track.id else { return }
-        await send("/me/tracks", method: isSaved ? "DELETE" : "PUT", query: [.init(name: "ids", value: id)])
+        await send("/me/tracks", method: isSaved ? "DELETE" : "PUT", query: [.init(name: "ids", value: id)], refreshAfter: false)
         do { saved = try await (request("/me/tracks", query: [.init(name: "limit", value: "30")]) as Page<SavedTrack>?)?.items.map(\.track) ?? [] }
         catch { self.error = error.localizedDescription }
     }
