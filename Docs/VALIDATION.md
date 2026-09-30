@@ -18,7 +18,21 @@ The local package is a working-source review artifact in `dist/`; it is not atta
 
 ## CI
 
-The [Verify workflow](https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml) targets Apple Silicon (`macos-15`) and Intel (`macos-15-intel`). The [initial run](https://github.com/heyaaakash/spotify-mac-menu/actions/runs/36713483979) passed all Apple Silicon checks and packaging, but the Intel VM aborted during native rendering with a Metal assertion. Intel CI now explicitly skips that single fixture and reports it separately; the remaining checks and packaging still run. Updated results will be linked after verification completes. It exercises mocked/native regression checks and app/ZIP packaging; it does not use a Spotify account or test live playback/permissions.
+The [Verify workflow](https://github.com/heyaaakash/spotify-mac-menu/actions/runs/36713797814) **passed both jobs** on macOS 15.7.9, Swift 6.1.2, from source commit `cbc9350fd15e98b278020b87a9df26002c248912`.
+
+| Runner | Result |
+| --- | --- |
+| Apple Silicon (`macos-15`) | 30 checks passed, 0 failures, 0 skipped; app/ZIP packaging and upload passed |
+| Intel (`macos-15-intel`) | 29 checks passed, 0 failures, 1 explicitly skipped native-render fixture; app/ZIP packaging and upload passed |
+
+The [initial run](https://github.com/heyaaakash/spotify-mac-menu/actions/runs/36713483979) exposed a Metal assertion in the Intel VM during native snapshot rendering. That one check is now reported as skipped for the Intel hosted runner; it still executes locally and in Apple Silicon CI. This does not establish native rendering on physical Intel hardware. CI never uses a Spotify account or exercises live playback/permissions.
+
+Both uploaded CI ZIPs were downloaded on 2026-09-30 and checked independently: SHA-256 matched, signatures and plists verified, bundle version was 1.3.0, architecture matched the filename, and the bundled license matched the repository license. They are local review artifacts in `dist/`, not a public release. GitHub CI artifacts have a 14-day retention policy.
+
+| ZIP | Bytes | SHA-256 |
+| --- | --- | --- |
+| `SpotMenu-1.3.0-macos-arm64.zip` | 2609132 | `77033c3e7d27c2e71cb5134cd8d226cd7ebd1fa91287d91a1cc9c83bb3aed5be` |
+| `SpotMenu-1.3.0-macos-x86_64.zip` | 2629951 | `b9a2892b8e37228c155c53660230f46639d543ceeb898f1555e5b64aeeaf57b8` |
 
 ## Still unverified
 

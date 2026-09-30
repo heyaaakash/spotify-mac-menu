@@ -68,8 +68,8 @@ Local packages are **ad-hoc signed and not notarized**. A signature check does n
 
 | Requirement | Current status |
 | --- | --- |
-| macOS | Deployment target is macOS 14+. Local validation was on macOS 27.0.1; minimum-version installation still needs testing. |
-| Mac architecture | Apple Silicon checked locally. Intel is included in the CI workflow; see its actual results before assuming support. |
+| macOS | Deployment target is macOS 14+. Checked locally on macOS 27.0.1 and in CI on 15.7.9; minimum-version installation still needs testing. |
+| Mac architecture | Apple Silicon checked locally; both architecture CI jobs passed tests and packaging. Intel skips one native-render fixture on the VM; physical Intel use is unverified. |
 | Spotify account | An eligible account and a Spotify developer app Client ID are required. Playback controls require Premium. New development-mode apps also require the app owner to have Premium and restrict eligible users. |
 | Playback | Start Spotify on a device first. SpotMenu controls that device; it does not stream audio itself. |
 | Source builds | Swift 6 or later and a compatible macOS SDK/Xcode or command-line tools. |

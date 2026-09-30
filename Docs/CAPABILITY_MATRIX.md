@@ -7,8 +7,9 @@ Source version: **1.3.0**. This matrix separates implementation, automated check
 | Environment | Evidence and limit |
 | --- | --- |
 | Apple Silicon, macOS 27.0.1 | Existing 30-check harness passed on 2026-09-30 after repository extraction. Presentation/build validation is recorded in [VALIDATION.md](VALIDATION.md). |
+| Apple Silicon, macOS 15.7.9 CI | [CI passed](https://github.com/heyaaakash/spotify-mac-menu/actions/runs/36713797814) all 30 mocked/native checks and app/ZIP packaging with Swift 6.1.2. No live Spotify session or installation test. |
 | macOS 14 minimum | Declared in `Package.swift` and the app plist. No clean installation or real-user journey recorded here. |
-| Intel Mac | CI targets `macos-15-intel`. See the [Verify workflow](https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml) for actual run results; native snapshot rendering is explicitly skipped because the hosted VM aborts in Metal. No physical Intel validation is recorded. |
+| Intel Mac | On macOS 15.7.9, [CI passed](https://github.com/heyaaakash/spotify-mac-menu/actions/runs/36713797814) 29 checks and packaging. One native-render fixture is explicitly skipped because the hosted VM aborts in Metal. No physical Intel validation is recorded. |
 | Other macOS releases | No complete version/device matrix recorded. |
 
 ## Features
