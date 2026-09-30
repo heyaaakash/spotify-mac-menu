@@ -2,7 +2,7 @@
 
 Version metadata comes from `VERSION` and `BUILD_NUMBER`. Future immutable release tags use `vMAJOR.MINOR.PATCH`.
 
-## 1.4.3 — current source, not yet published
+## 1.4.3 — 2026-10-01
 
 - Automatic playback detection continues while the menu is closed, keeping the menu bar playing indicator current.
 - Spotify desktop playback notifications update track/play/pause state immediately on receipt, followed by a Web API reconciliation. Briefly stale or empty responses cannot erase a newer desktop event.

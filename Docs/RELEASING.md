@@ -23,7 +23,7 @@ git push origin "v$(cat VERSION)"
 
 The upload script needs authenticated GitHub CLI and `rg`. It checks the clean tree, local and remote tag commits, version/build provenance, staged notes, and checksums. It uploads both ZIPs, checksums, and build information using `gh release create --draft --verify-tag`. It never creates/moves a tag or publishes a public release. An existing release is not overwritten.
 
-Download every draft asset, check the hashes, and install/open the actual downloads on the target Macs. Update release claims from those results. Final publication remains an explicit owner action in GitHub Releases; verify the published page and support links afterward. No binary release is published yet.
+Download every draft asset, check the hashes, and install/open the actual downloads on the target Macs. Update release claims from those results. Final publication remains an explicit owner action in GitHub Releases; verify the published page and support links afterward. Binary releases are available on the [Releases page](https://github.com/heyaaakash/spotify-mac-menu/releases).
 
 ## Credentials and signing
 

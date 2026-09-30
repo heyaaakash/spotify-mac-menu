@@ -58,9 +58,15 @@ All previews use fictional sample data. See [screenshots/README.md](screenshots/
 
 ## Get SpotMenu
 
-The current source version is **1.4.3**. No downloadable release has been published yet; use the source build below. Future verified downloads will appear on the [Releases page](https://github.com/heyaaakash/spotify-mac-menu/releases).
+Download **[SpotMenu v1.4.3](https://github.com/heyaaakash/spotify-mac-menu/releases/tag/v1.4.3)** (build 8):
 
-Local packages are **ad-hoc signed and not notarized**. A signature check does not mean Apple has verified the app. A downloaded build may be blocked by Gatekeeper; [Apple explains how to open an app from an unidentified developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac). Only allow a download you trust.
+| Apple Silicon | Intel | Verification |
+| --- | --- | --- |
+| [arm64 ZIP](https://github.com/heyaaakash/spotify-mac-menu/releases/download/v1.4.3/SpotMenu-1.4.3-macos-arm64.zip) | [x86_64 ZIP](https://github.com/heyaaakash/spotify-mac-menu/releases/download/v1.4.3/SpotMenu-1.4.3-macos-x86_64.zip) | [SHA-256 checksums](https://github.com/heyaaakash/spotify-mac-menu/releases/download/v1.4.3/SHA256SUMS.txt) |
+
+Unzip the download and move `SpotMenu.app` to Applications. Quit an older copy before replacing it. Intel is cross-compiled; physical Intel use and clean installation remain unverified. Repository/release access follows the repository’s visibility.
+
+These packages are **ad-hoc signed and not notarized**. A signature check does not mean Apple has verified the app. A downloaded build may be blocked by Gatekeeper; [Apple explains how to open an app from an unidentified developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac). Only allow a download you trust.
 
 ## Requirements and compatibility
 
