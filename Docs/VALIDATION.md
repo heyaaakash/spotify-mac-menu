@@ -2,7 +2,7 @@
 
 ## Published v1.4.3 — build 8
 
-Published on **2026-10-01**, Asia/Calcutta, as the [latest GitHub release](https://github.com/heyaaakash/spotify-mac-menu/releases/tag/v1.4.3). The repository remains private. Annotated tag `v1.4.3` points to clean release commit `f6663fe1739062588a73ddd1ab0cdeedee6c03c5`; the tag was pushed before uploading assets.
+Published on **2026-10-01**, Asia/Calcutta, as the [latest GitHub release](https://github.com/heyaaakash/spotify-mac-menu/releases/tag/v1.4.3). The final repository check reports public visibility (the pre-release check reported private). Annotated tag `v1.4.3` points to clean release commit `f6663fe1739062588a73ddd1ab0cdeedee6c03c5`; the tag was pushed before uploading assets.
 
 - The tagged source was rebuilt locally with `./Scripts/prepare-release.sh`: **46 passed, 0 failures, 0 skipped**. Screenshots stayed unchanged, and provenance records `source_state=clean`, version 1.4.3, build 8, and the exact tagged commit.
 - Five assets were uploaded: arm64/x86_64 ZIPs, `SHA256SUMS.txt`, `BUILD_INFO.txt`, and `RELEASE_NOTES.md`. All were downloaded from the draft and compared byte-for-byte with local release assets before publication. Checksums, extracted signatures/plists, version/build, architecture, and bundled license passed for both downloaded ZIPs.
