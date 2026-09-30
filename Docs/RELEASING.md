@@ -1,26 +1,38 @@
 # Releasing SpotMenu
 
-Current packaging is ad-hoc signed and not notarized. Developer ID signing/notarization and automatic updates are not configured. Keep the installation friction visible in README and release notes.
+All verification, screenshots, packaging, and release preparation run on a Mac. GitHub Actions is disabled and workflow files have been removed. Packages are ad-hoc signed and not notarized; automatic updates and Developer ID distribution are not configured.
 
-## Prepare and verify
+## Prepare locally
 
-1. Update `VERSION`, `BUILD_NUMBER`, `CHANGELOG.md`, and `Docs/RELEASE_NOTES.md`. For the first standalone release, the current source is 1.3.0, build 4; no version tag has been published.
-2. Run `./Scripts/test.sh`, `./Scripts/package.sh`, and `./Scripts/screenshots.sh` as appropriate. Review images and package contents. Confirm the [Verify workflow](https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml) passes on both architecture jobs.
-3. Record the exact commit and check [CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md). Perform clean installation and live Spotify sign-in/playback on the environments you will claim. Exercise denied access, absent devices, disconnect, upgrade, and uninstall. Review licensing, icon rights, support access, and historical identities before a public launch.
-4. Once that exact commit is approved, create and push an immutable `v` tag matching `VERSION`. Do not move an existing published tag.
-5. Manually dispatch **Prepare draft release** with that tag. It tests/packages on both Mac architectures, verifies version/architecture, and creates a **draft** with two ZIPs and `SHA256SUMS.txt`. The workflow has no tag-triggered automatic public publication.
-6. Review the draft, download every attached ZIP, check hashes, and install/open the downloads. Update public claims from those results, then make final publication an explicit owner action. Confirm the published page and support links while logged out.
+1. Update `VERSION`, `BUILD_NUMBER`, `CHANGELOG.md`, and `Docs/RELEASE_NOTES.md`. Current source: 1.4.2, build 7.
+2. Run `./Scripts/prepare-release.sh`. It runs every native regression check, refreshes fictional-data screenshots, builds arm64 and x86_64 ZIPs sequentially, round-trip verifies each app, and stages both ZIPs, `SHA256SUMS.txt`, release notes, and `BUILD_INFO.txt` in `dist/release-VERSION/`. The host architecture app remains in `dist/SpotMenu.app`.
+3. Review screenshots and update [VALIDATION.md](VALIDATION.md) and [CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md). Cross-compilation verifies the Intel package, not Intel runtime behavior. Perform live sign-in/playback, permission handling, clean installation, upgrade/uninstall, and physical-device testing for the environments you will claim.
+4. Commit the final source, screenshots, and evidence; push it. Generated `dist/` files stay outside Git. Rerun release preparation from that clean commit so its provenance says `source_state=clean` and identifies the exact commit.
 
-There is no published binary release yet. Local package verification and passing CI do not replace steps 3 and 6.
+For ordinary changes, use `./Scripts/verify.sh` before pushing; add `--screenshots` for UI changes. No GitHub credentials are needed to verify or prepare packages locally. The scripts honor `SDKROOT`; all checks run on the host architecture with native rendering enabled.
+
+## Upload a draft
+
+After reviewing the exact commit, create and push an immutable version tag matching `VERSION`, for example:
+
+```sh
+git tag -a "v$(cat VERSION)" -m "SpotMenu $(cat VERSION)"
+git push origin "v$(cat VERSION)"
+./Scripts/draft-release.sh
+```
+
+The upload script needs authenticated GitHub CLI and `rg`. It checks the clean tree, local and remote tag commits, version/build provenance, staged notes, and checksums. It uploads both ZIPs, checksums, and build information using `gh release create --draft --verify-tag`. It never creates/moves a tag or publishes a public release. An existing release is not overwritten.
+
+Download every draft asset, check the hashes, and install/open the actual downloads on the target Macs. Update release claims from those results. Final publication remains an explicit owner action in GitHub Releases; verify the published page and support links afterward. No binary release is published yet.
 
 ## Credentials and signing
 
-Verification uses read-only checkout permissions, pinned action commits, and no account credentials. The draft workflow grants `contents: write` only to its final job. Spotify tokens and Client IDs are never injected into CI. Keep signing certificates, private keys, and notary credentials outside Git in scoped protected secrets if Developer ID is later added.
+Tests and previews use mocked requests and fictional data. They never need Spotify account credentials. Keep GitHub authentication, signing certificates, private keys, and notary credentials outside Git. Upload authorization comes from the local GitHub CLI session.
 
-For Developer ID distribution, add hardened runtime, required entitlements, secure timestamps, notarization, and stapling according to [Apple’s documentation](https://developer.apple.com/developer-id/). Test the actual downloaded result on a separate Mac before changing trust claims.
+For Developer ID distribution, configure hardened runtime, entitlements, secure timestamps, notarization, and stapling using [Apple’s documentation](https://developer.apple.com/developer-id/). Test the downloaded result on a separate Mac before changing trust claims.
 
 ## Rollback and maintenance
 
-There is no previous published standalone SpotMenu release yet. Keep the prior verified ZIP/checksum when a release exists. For a bad release, explain the issue in its notes, stop recommending that version, and publish a new immutable version from the corrected commit. Do not silently replace a published tag or assume newer local data can be read by an older binary.
+Keep the previous verified ZIP/checksum when a release exists. For a bad release, explain the issue, stop recommending that version, and publish a new immutable version from the corrected commit. Do not silently replace published tags or assume older binaries can read newer local data.
 
-The repository owner/maintainer is `heyaaakash`. Triage issues and CI failures after changes, review dependency/action updates monthly, and recheck Spotify API restrictions before each release. Update validation records and screenshots when behavior changes. Private security reports follow [SECURITY.md](../SECURITY.md).
+The owner/maintainer is `heyaaakash`. Triage reported bugs and local check failures, review dependencies monthly, and recheck Spotify restrictions before releases. Refresh validation records and screenshots when behavior changes. Private security reports follow [SECURITY.md](../SECURITY.md).

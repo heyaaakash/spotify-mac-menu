@@ -13,9 +13,13 @@ build_number="$(<BUILD_NUMBER)"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid VERSION" >&2; exit 1; }
 [[ "$build_number" =~ ^[0-9]+$ ]] || { echo "Invalid BUILD_NUMBER" >&2; exit 1; }
 
+architecture="${SPOTMENU_ARCH:-$(uname -m)}"
+[[ "$architecture" == arm64 || "$architecture" == x86_64 ]] || { echo "Unsupported SPOTMENU_ARCH: $architecture" >&2; exit 1; }
+build_args=(--disable-sandbox --scratch-path ".build/release-${architecture}" -c release --triple "${architecture}-apple-macosx14.0")
 ./Scripts/build-icon.sh
-swift build --disable-sandbox --scratch-path .build -c release -debug-info-format none
-binary_dir="$(swift build --disable-sandbox --scratch-path .build -c release --show-bin-path)"
+swift build "${build_args[@]}" -debug-info-format none
+binary_dir="$(swift build "${build_args[@]}" --show-bin-path)"
+[[ "$(lipo -archs "${binary_dir}/SpotMenu")" == "$architecture" ]] || { echo "Built architecture does not match $architecture" >&2; exit 1; }
 app="${PWD}/dist/SpotMenu.app"
 stage="$(mktemp -d "${TMPDIR:-/private/tmp}/spotmenu-bundle.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
@@ -39,6 +43,7 @@ cat > "${bundle}/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAudioCaptureUsageDescription</key><string>SpotMenu analyzes Spotify audio on this Mac to animate its waveform and detect musical pulses. Audio stays in memory and is never recorded or uploaded.</string>
   <key>NSAppleEventsUsageDescription</key><string>SpotMenu controls playback in Spotify when Spotify's Web API cannot reach the active device.</string>
 </dict></plist>
 PLIST

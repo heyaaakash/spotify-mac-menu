@@ -6,7 +6,7 @@ export SPOTMENU_REGISTER_APP=0
 version="$(<VERSION)"
 app="${PWD}/dist/SpotMenu.app"
 architecture="$(lipo -archs "${app}/Contents/MacOS/SpotMenu")"
-[[ "$architecture" == arm64 || "$architecture" == x86_64 ]] || { echo "Expected one native architecture, got: $architecture" >&2; exit 1; }
+[[ "$architecture" == arm64 || "$architecture" == x86_64 ]] || { echo "Expected one architecture, got: $architecture" >&2; exit 1; }
 name="SpotMenu-${version}-macos-${architecture}.zip"
 archive="${PWD}/dist/${name}"
 ditto -c -k --keepParent --norsrc "$app" "$archive"
@@ -18,9 +18,11 @@ plutil -lint "${check_dir}/SpotMenu.app/Contents/Info.plist"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "${check_dir}/SpotMenu.app/Contents/Info.plist")" == "$version" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "${check_dir}/SpotMenu.app/Contents/Info.plist")" == "$(<BUILD_NUMBER)" ]]
 cmp "$app/Contents/MacOS/SpotMenu" "${check_dir}/SpotMenu.app/Contents/MacOS/SpotMenu"
+cmp LICENSE "${check_dir}/SpotMenu.app/Contents/Resources/LICENSE.txt"
+[[ "$(lipo -archs "${check_dir}/SpotMenu.app/Contents/MacOS/SpotMenu")" == "$architecture" ]]
 # A distribution ZIP contains only the app executable, icon, license, plist, and signature.
 expected="Contents/Info.plist Contents/MacOS/SpotMenu Contents/Resources/SpotMenu.icns Contents/Resources/LICENSE.txt Contents/_CodeSignature/CodeResources"
-for file in "${check_dir}/SpotMenu.app"/**/*(.N); do
+for file in "${check_dir}/SpotMenu.app"/**/*(.DN); do
   relative="${file#${check_dir}/SpotMenu.app/}"
   [[ " $expected " == *" $relative "* ]] || { echo "Unexpected package file: $relative" >&2; exit 1; }
 done

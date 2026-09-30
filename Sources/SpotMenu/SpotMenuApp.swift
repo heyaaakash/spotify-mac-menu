@@ -69,9 +69,11 @@ enum PopoverLayout {
             let consumed = MainActor.assumeIsolated { self?.handleKey(event) == nil }
             return consumed ? nil : event
         }
+        spotify.visualizer.bind(player: spotify.player, preferences: preferences)
         registerShortcut()
     }
     func applicationWillTerminate(_ notification: Notification) {
+        spotify.visualizer.shutdown()
         pollingTask?.cancel()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         if let hotKey { UnregisterEventHotKey(hotKey) }

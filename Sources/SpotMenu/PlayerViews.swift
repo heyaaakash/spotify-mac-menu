@@ -19,6 +19,7 @@ struct PlayerBar: View {
                             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.86)))
                     }
                     .frame(width: compact ? 46 : 64, height: compact ? 46 : 64)
+                    .modifier(AudioBeatPulse(visualizer: spotify.visualizer))
                     .scaleEffect(playing || reduceMotion ? 1 : 0.9)
                     .shadow(color: Palette.shadow.opacity(playing ? 1 : 0.3), radius: playing ? 9 : 3, y: playing ? 4 : 1)
                     .animation(Motion.animation(reduced: reduceMotion), value: playing)
@@ -27,7 +28,7 @@ struct PlayerBar: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if !compact {
                         HStack(spacing: 5) {
-                            PlayingWaveform(playing: playing, width: 15, height: 11)
+                            LivePlayingIndicator(visualizer: spotify.visualizer, playing: playing, width: 15, height: 11)
                             Text(player.playback?.item == nil ? "YOUR PLAYER" : playing ? "NOW PLAYING" : "PAUSED").font(.system(size: 9, weight: .bold)).tracking(1.5).foregroundStyle(Palette.green)
                             if player.pendingCommands > 0 { ProgressView().controlSize(.mini).scaleEffect(0.7).frame(width: 10, height: 10) }
                         }
@@ -37,7 +38,7 @@ struct PlayerBar: View {
                         .contentTransition(.opacity)
                         .animation(Motion.animation(reduced: reduceMotion), value: player.playback?.item?.stableID)
                     HStack(spacing: 5) {
-                        if compact { PlayingWaveform(playing: playing, width: 13, height: 10) }
+                        if compact { LivePlayingIndicator(visualizer: spotify.visualizer, playing: playing, width: 13, height: 10) }
                         Text(player.playback?.item?.artistLine ?? "Start playing on a Spotify device").font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(1)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
@@ -121,15 +122,15 @@ private struct SeekBar: View {
     @State private var seeking = false
     var body: some View {
         VStack(spacing: 1) {
-            MusicSlider(value: $position, range: 0...Double(max(player.playback?.item?.duration_ms ?? 1, 1)), label: "Playback position", valueDescription: timeString(Int(position)), smoothUpdates: true, step: 5000, onEditingChanged: { editing in
+            MusicSlider(value: $position, range: 0...Double(max(player.playback?.item?.duration_ms ?? 1, 1)), label: "Playback position", valueDescription: timeString(Int(position)), smoothUpdates: true, step: 5000, waveform: spotify.visualizer, playing: player.playback?.is_playing == true, onEditingChanged: { editing in
                 seeking = editing
                 if !editing { Task { await spotify.seek(Int(position)) } }
             }).disabled(player.playback?.item == nil).accessibilityLabel("Playback position")
             HStack { Text(timeString(Int(position))); Spacer(); Text(timeString(player.playback?.item?.duration_ms ?? 0)) }
                 .font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(Palette.muted)
         }
-        .onAppear { position = Double(player.playback?.progress_ms ?? 0) }
-        .onChange(of: player.playback?.item?.stableID) { _, _ in position = Double(player.playback?.progress_ms ?? 0) }
+        .onAppear { resetPosition() }
+        .onChange(of: player.playback?.item?.stableID) { _, _ in resetPosition() }
         .onChange(of: player.playback?.progress_ms) { _, value in if !seeking { position = Double(value ?? 0) } }
         .task(id: preferences.isPresented && !preferences.compact) {
             guard preferences.isPresented, !preferences.compact else { return }
@@ -138,6 +139,11 @@ private struct SeekBar: View {
                 if player.playback?.is_playing == true && !seeking { position = min(position + 1000, Double(player.playback?.item?.duration_ms ?? 0)) }
             }
         }
+    }
+    private func resetPosition() {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { position = Double(player.playback?.progress_ms ?? 0) }
     }
     private func timeString(_ value: Int) -> String { let seconds = max(0, value / 1000); return String(format: "%d:%02d", seconds / 60, seconds % 60) }
 }

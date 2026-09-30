@@ -19,6 +19,7 @@ enum AppearanceMode: String, CaseIterable { case auto = "Auto", light = "Light",
     @Published var desktopFallback: Bool { didSet { defaults.set(desktopFallback, forKey: "desktopFallback") } }
     @Published var rememberSearches: Bool { didSet { defaults.set(rememberSearches, forKey: "rememberSearches"); if !rememberSearches { recentSearches = [] } } }
     @Published var playingIcon: Bool { didSet { defaults.set(playingIcon, forKey: "playingIcon") } }
+    @Published var liveVisualizer: Bool { didSet { defaults.set(liveVisualizer, forKey: "liveVisualizer") } }
     @Published var compact: Bool { didSet { defaults.set(compact, forKey: "compactMode") } }
     @Published var tab: AppTab { didSet { defaults.set(tab.rawValue, forKey: "selectedTab") } }
     @Published var filter: LibraryFilter { didSet { defaults.set(filter.rawValue, forKey: "libraryFilter") } }
@@ -42,6 +43,7 @@ enum AppearanceMode: String, CaseIterable { case auto = "Auto", light = "Light",
         desktopFallback = defaults.object(forKey: "desktopFallback") as? Bool ?? true
         rememberSearches = defaults.object(forKey: "rememberSearches") as? Bool ?? true
         playingIcon = defaults.object(forKey: "playingIcon") as? Bool ?? true
+        liveVisualizer = defaults.bool(forKey: "liveVisualizer")
         compact = defaults.bool(forKey: "compactMode")
         tab = AppTab(rawValue: defaults.string(forKey: "selectedTab") ?? "") ?? .home
         filter = LibraryFilter(rawValue: defaults.string(forKey: "libraryFilter") ?? "") ?? .all

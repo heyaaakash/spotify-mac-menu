@@ -36,19 +36,35 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() { responseTask?.cancel() }
 }
 
+private actor MockAudioCapture: AudioCapturing {
+    var starts = 0
+    var stops = 0
+    var callbacks: [@Sendable (AudioFrame) -> Void] = []
+    var failure = false
+    func start(onFrame: @escaping @Sendable (AudioFrame) -> Void) async throws {
+        starts += 1; callbacks.append(onFrame)
+        try await Task.sleep(for: .milliseconds(20))
+        if failure { throw AudioCaptureError.spotifyNotRunning }
+    }
+    func stop() { stops += 1 }
+    func emit(_ frame: AudioFrame, callback: Int = 0) { callbacks[callback](frame) }
+    func setFailure(_ value: Bool = true) { failure = value }
+    func counts() -> (Int, Int) { (starts, stops) }
+}
+
 @MainActor final class SpotMenuTests {
-    private func fixture() -> (SpotifyService, UserDefaults, URL) {
+    private func fixture(capture: MockAudioCapture? = nil) -> (SpotifyService, UserDefaults, URL) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubProtocol.self]
         let name = "SpotMenuTests.\(UUID())"
         let defaults = UserDefaults(suiteName: name)!
         defaults.set("fixture-client", forKey: "spotifyClientID")
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-        let service = SpotifyService(session: URLSession(configuration: configuration), cache: LibraryCache(directory: directory), defaults: defaults, initialToken: "fixture-token", restore: false, reconciliationDelay: nil)
+        let service = SpotifyService(session: URLSession(configuration: configuration), cache: LibraryCache(directory: directory), defaults: defaults, initialToken: "fixture-token", restore: false, reconciliationDelay: nil, visualizer: AudioVisualizer(capture: capture ?? MockAudioCapture()))
         return (service, defaults, directory)
     }
     private var song: Track { Track(id: "one", name: "First song", uri: "spotify:track:one", duration_ms: 240000, artists: [Artist(id: "artist", name: "Test Artist", uri: nil)], album: nil) }
-    private func playback(_ song: Track) -> Playback { Playback(is_playing: true, progress_ms: 5000, repeat_state: "off", shuffle_state: false, item: song, device: nil) }
+    private func playback(_ song: Track, playing: Bool = true, progress: Int = 5000) -> Playback { Playback(is_playing: playing, progress_ms: progress, repeat_state: "off", shuffle_state: false, item: song, device: nil) }
     private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
         while !condition() && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
@@ -249,6 +265,102 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
         expect(object?["context_uri"] as? String == "spotify:playlist:mix")
     }
 
+    private func tone(_ frequency: Double, amplitude: Float = 0.2) -> [Float] {
+        (0..<SpectrumAnalyzer.sampleCount).map { amplitude * Float(sin(2 * Double.pi * frequency * Double($0) / 48000)) }
+    }
+    func testLiveSpectrumMeasuresFrequencyAndLoudness() {
+        let low = SpectrumAnalyzer().analyze(tone(93.75), sampleRate: 48000, at: 1)
+        let high = SpectrumAnalyzer().analyze(tone(6000), sampleRate: 48000, at: 1)
+        let lowPeak = low.bands.firstIndex(of: low.bands.max()!)!
+        let highPeak = high.bands.firstIndex(of: high.bands.max()!)!
+        expect(lowPeak < 8 && highPeak > 16)
+        expect(abs(low.energy - 0.141421) < 0.005)
+        expect(low.waveform.count == 64 && low.waveform.contains { abs($0) > 0.19 })
+        expect(low.bands.allSatisfy { $0.isFinite && $0 >= 0 && $0 <= 1 })
+    }
+    func testSilenceAndInvalidAudioNeverFabricateBeats() {
+        let analyzer = SpectrumAnalyzer()
+        let silence = analyzer.analyze(Array(repeating: 0, count: 2048), sampleRate: 48000, at: 1)
+        expect(silence.energy == 0 && silence.beat == 0 && silence.bands.allSatisfy { $0 == 0 })
+        let invalid = analyzer.analyze(Array(repeating: .nan, count: 2048), sampleRate: 48000, at: 2)
+        expect(invalid.energy == 0 && invalid.waveform.allSatisfy { $0 == 0 })
+        expect(analyzer.analyze([0], sampleRate: 48000, at: 2) == .zero)
+        expect(analyzer.analyze(tone(93.75), sampleRate: 0, at: 2) == .zero)
+        expect(!silence.isFresh(at: 2) && silence.isFresh(at: 1.1))
+    }
+    func testBassOnsetPulsesDecayWithoutInventingATempo() {
+        let analyzer = SpectrumAnalyzer()
+        let onset = analyzer.analyze(tone(93.75), sampleRate: 48000, at: 1)
+        expect(onset.beat == 1)
+        var frame = onset
+        for index in 1...12 { frame = analyzer.analyze(tone(93.75), sampleRate: 48000, at: 1 + Double(index) / 24) }
+        expect(frame.beat < 0.05)
+        for index in 1...40 { frame = analyzer.analyze(Array(repeating: 0, count: 2048), sampleRate: 48000, at: 2 + Double(index) / 24) }
+        expect(frame.energy == 0 && frame.beat < 0.001 && (frame.bands.max() ?? 0) < 0.001)
+    }
+    func testAudioCaptureIsOptInAndStopsForHiddenOrRemotePlayback() async throws {
+        let mock = MockAudioCapture()
+        let measured = AudioVisualizer(capture: mock)
+        measured.update(enabled: false, active: true, remote: false, track: "test")
+        await measured.settle(); expect(measured.status == .off)
+        measured.update(enabled: true, active: true, remote: true, track: "test")
+        await measured.settle(); expect(measured.status == .remote)
+        let beforeCapture = await mock.counts()
+        expect(beforeCapture.0 == 0)
+        measured.update(enabled: true, active: true, remote: false, track: "test")
+        await measured.settle(); expect(measured.status == .listening)
+        let frame = SpectrumAnalyzer().analyze(tone(93.75), sampleRate: 48000, at: Date.timeIntervalSinceReferenceDate)
+        await mock.emit(frame)
+        try await waitUntil { measured.frame == frame }
+        measured.update(enabled: true, active: false, remote: false, track: "test")
+        await measured.settle(); expect(measured.status == .suspended && measured.frame == .zero)
+        await mock.emit(frame)
+        try await Task.sleep(for: .milliseconds(30))
+        expect(measured.frame == .zero)
+        let afterCapture = await mock.counts()
+        expect(afterCapture.1 >= 3)
+    }
+    func testCancelledCaptureAndUnavailableAudioDoNotRestartAutomatically() async {
+        let mock = MockAudioCapture(), visualizer = AudioVisualizer(capture: mock)
+        visualizer.update(enabled: true, active: true, remote: false, track: "test")
+        visualizer.shutdown()
+        await visualizer.settle()
+        expect(visualizer.status == .off && visualizer.frame == .zero)
+        await mock.setFailure()
+        visualizer.update(enabled: true, active: true, remote: false, track: "test")
+        await visualizer.settle()
+        if case .unavailable = visualizer.status {} else { expect(false) }
+        let count = await mock.counts().0
+        visualizer.update(enabled: true, active: true, remote: false, track: "test")
+        await visualizer.settle()
+        let afterRetry = await mock.counts()
+        expect(afterRetry.0 == count)
+        let error = visualizer.lastError
+        expect(error != nil)
+        // Settings suspends capture, but must retain the error and retry affordance.
+        visualizer.update(enabled: true, active: false, remote: false, track: "test")
+        await visualizer.settle()
+        expect(visualizer.status == .suspended && visualizer.lastError == error)
+        await mock.setFailure(false)
+        visualizer.update(enabled: true, active: true, remote: false, track: "test")
+        await visualizer.settle()
+        expect(visualizer.status == .listening && visualizer.lastError == nil)
+        visualizer.shutdown(); await visualizer.settle()
+        expect(visualizer.lastError == nil)
+    }
+    func testVisualizerPreferencesPersistWithSafeDefaults() {
+        let (_, defaults, _) = fixture()
+        let preferences = AppPreferences(defaults: defaults)
+        expect(!preferences.liveVisualizer)
+        preferences.liveVisualizer = true
+        let restored = AppPreferences(defaults: defaults)
+        expect(restored.liveVisualizer)
+        // Older style/intensity values no longer affect the single waveform experience.
+        defaults.set("Spectrum", forKey: "visualizerStyle")
+        defaults.set(Double.infinity, forKey: "visualizerIntensity")
+        expect(AppPreferences(defaults: defaults).liveVisualizer)
+    }
+
     private func requestObject(_ request: URLRequest) throws -> [String: Any] {
         var data = request.httpBody ?? Data()
         if data.isEmpty, let stream = request.httpBodyStream {
@@ -344,7 +456,8 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
 
     func testNativeViewsKeepCompactAndExpandedDimensions() async throws {
         _ = NSApplication.shared
-        let (service, defaults, _) = fixture()
+        let mock = MockAudioCapture()
+        let (service, defaults, _) = fixture(capture: mock)
         let preferences = AppPreferences(defaults: defaults)
         service.profile = Profile(display_name: "Aakash", product: "premium")
         service.player.apply(playback(song))
@@ -352,7 +465,7 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
         service.playlists = (0..<5).map { Playlist(id: "playlist\($0)", name: "Favorite playlist \($0)", uri: nil, description: nil, images: nil) }
         preferences.isPresented = true
         for scheme in [ColorScheme.light, .dark] {
-        for screen in ["compact", "expanded", "library", "search", "devices", "settings"] {
+        for screen in ["compact", "expanded", "library", "search", "devices", "settings", "live-waveform", "paused-waveform"] {
             let mode: PopoverMode = screen == "compact" ? .compact : .expanded
             preferences.compact = mode == .compact
             preferences.tab = screen == "library" ? .library : screen == "search" ? .search : .home
@@ -364,8 +477,19 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
                 service.search = SearchResults(tracks: Page(items: [song], next: nil, total: 1), artists: nil, albums: nil, playlists: Page(items: service.playlists.map(Optional.some), next: nil, total: 5))
             }
             if screen == "devices" { service.devices = (0..<12).map { Device(id: "device\($0)", name: "Speaker \($0)", type: "Speaker", is_active: $0 == 0, volume_percent: 50, supports_volume: true, is_restricted: false) } }
+            let liveFixture = screen.hasPrefix("live-")
+            service.player.apply(playback(song, playing: screen != "paused-waveform", progress: 155000))
+            if liveFixture {
+                service.visualizer.update(enabled: true, active: true, remote: false, track: "synthetic-fixture")
+                await service.visualizer.settle()
+                let input = zip(tone(93.75), tone(3000, amplitude: 0.1)).map(+)
+                let frame = SpectrumAnalyzer().analyze(input, sampleRate: 48000, at: Date.timeIntervalSinceReferenceDate)
+                let count = await mock.counts().0
+                await mock.emit(frame, callback: count - 1)
+                try await waitUntil { service.visualizer.frame == frame }
+            }
             let root = ContentView(mode: mode).environmentObject(service).environmentObject(service.player).environmentObject(preferences)
-                .environment(\.colorScheme, scheme).environment(\.motionReduced, true)
+                .environment(\.colorScheme, scheme).environment(\.motionReduced, !liveFixture)
             let host = NSHostingController(rootView: root)
             host.sizingOptions = []
             let size = PopoverLayout.size(mode)
@@ -383,12 +507,40 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
             let png = try require(bitmap.representation(using: .png, properties: [:]))
             try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("spotmenu-\(scheme == .dark ? "dark" : "light")-\(screen).png"))
             window.close()
+            service.visualizer.shutdown(); await service.visualizer.settle()
         }
         }
 
     }
 
     func testAnimationLoopsStopWhenHiddenPausedOrReduced() {
+        let frame = SpectrumAnalyzer().analyze(tone(93.75), sampleRate: 48000, at: 1)
+        for layer in 0..<3 {
+            for amplitude in [0.62, Double(frame.energy)] {
+                let levels = ProgressWaveMath.levels(at: 123456789, active: true, amplitude: amplitude, layer: layer)
+                expect(levels.count == 80 && levels.allSatisfy { $0.isFinite && $0 >= 0 && $0 <= 1 })
+                expect(levels.first == 0 && abs(levels.last ?? 0) < 0.000001)
+                expect(ProgressWaveMath.levels(at: 1, active: false, amplitude: amplitude, layer: layer).allSatisfy { $0 == 0 })
+            }
+        }
+        var envelope = WaveEnvelope()
+        envelope.retarget(to: 0.95, at: 1)
+        expect(abs(envelope.value(at: 1) - 0.62) < 0.000001)
+        expect(envelope.value(at: 1 + 1.0 / 60) - 0.62 < 0.02)
+        // Fast audio fluctuations must not cause large per-frame surface jumps.
+        envelope = WaveEnvelope()
+        var previous = ProgressWaveMath.levels(at: 3599, active: true, amplitude: 0.62, layer: 0)
+        for index in 0..<180 {
+            let time = 3599 + Double(index) / 60
+            envelope.retarget(to: index.isMultiple(of: 2) ? 0.3 : 0.95, at: time)
+            let next = ProgressWaveMath.levels(at: time, active: true, amplitude: envelope.value(at: time), layer: 0)
+            expect(zip(previous, next).allSatisfy { abs($0 - $1) < 0.04 })
+            previous = next
+        }
+        let beforeInvalid = envelope.value(at: 3602)
+        envelope.retarget(to: .infinity, at: 3602)
+        expect(envelope.value(at: 3602) == beforeInvalid)
+        expect(ProgressWaveMath.levels(at: .nan, active: true, amplitude: 0.6, layer: 0).allSatisfy { $0 == 0 })
         expect(Motion.runs(playing: true, presented: true, reduced: false))
         for playing in [true, false] {
             for visible in [true, false] {
@@ -530,6 +682,36 @@ private func require<T>(_ value: T?) throws -> T { guard let value else { throw 
         var passed = 0
         do {
             let before = failures.count
+            checks.testLiveSpectrumMeasuresFrequencyAndLoudness()
+            if failures.count == before { passed += 1; print("PASS testLiveSpectrumMeasuresFrequencyAndLoudness") }
+        }
+        do {
+            let before = failures.count
+            checks.testSilenceAndInvalidAudioNeverFabricateBeats()
+            if failures.count == before { passed += 1; print("PASS testSilenceAndInvalidAudioNeverFabricateBeats") }
+        }
+        do {
+            let before = failures.count
+            checks.testBassOnsetPulsesDecayWithoutInventingATempo()
+            if failures.count == before { passed += 1; print("PASS testBassOnsetPulsesDecayWithoutInventingATempo") }
+        }
+        do {
+            let before = failures.count
+            try await checks.testAudioCaptureIsOptInAndStopsForHiddenOrRemotePlayback()
+            if failures.count == before { passed += 1; print("PASS testAudioCaptureIsOptInAndStopsForHiddenOrRemotePlayback") }
+        } catch { failures.append("testAudioCaptureIsOptInAndStopsForHiddenOrRemotePlayback: \(error)") }
+        do {
+            let before = failures.count
+            await checks.testCancelledCaptureAndUnavailableAudioDoNotRestartAutomatically()
+            if failures.count == before { passed += 1; print("PASS testCancelledCaptureAndUnavailableAudioDoNotRestartAutomatically") }
+        }
+        do {
+            let before = failures.count
+            checks.testVisualizerPreferencesPersistWithSafeDefaults()
+            if failures.count == before { passed += 1; print("PASS testVisualizerPreferencesPersistWithSafeDefaults") }
+        }
+        do {
+            let before = failures.count
             try await checks.testSearchPlaybackRetainsAlbumAndSelectedSong()
             if failures.count == before { passed += 1; print("PASS testSearchPlaybackRetainsAlbumAndSelectedSong") }
         } catch { failures.append("testSearchPlaybackRetainsAlbumAndSelectedSong: \(error)") }
@@ -656,7 +838,7 @@ private func require<T>(_ value: T?) throws -> T { guard let value else { throw 
         } catch { failures.append("testCollectionPlaybackUsesItsContext: \(error)") }
         let skipUIRender = ProcessInfo.processInfo.environment["SPOTMENU_SKIP_UI_RENDER"] == "1"
         if skipUIRender {
-            print("SKIP testNativeViewsKeepCompactAndExpandedDimensions: native GPU rendering disabled explicitly for the Intel CI VM; run locally on a physical Mac")
+            print("SKIP testNativeViewsKeepCompactAndExpandedDimensions: native GPU rendering explicitly disabled by SPOTMENU_SKIP_UI_RENDER; run on a Mac with working graphics")
         } else {
             do {
                 let before = failures.count

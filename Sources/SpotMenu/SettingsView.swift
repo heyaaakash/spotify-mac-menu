@@ -35,6 +35,10 @@ struct SettingsView: View {
                         setting("Playing indicator", detail: "Show a waveform in the menu bar while music plays.", value: $preferences.playingIcon)
                     }
 
+                    group("Music visuals", icon: "waveform.path") {
+                        LiveVisualizerSettings(visualizer: spotify.visualizer)
+                    }
+
                     group("Playback", icon: "play.circle") {
                         setting("Continue searched songs", detail: "Play the rest of the album after a search result. Liked songs and Queue also keep their remaining songs.", value: $preferences.continuousPlayback)
                         VStack(alignment: .leading, spacing: 7) {

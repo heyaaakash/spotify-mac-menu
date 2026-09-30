@@ -188,6 +188,8 @@ struct MusicSlider: View {
     var valueDescription: String
     var smoothUpdates = false
     var step = 1.0
+    var waveform: AudioVisualizer? = nil
+    var playing = false
     let onEditingChanged: (Bool) -> Void
     @State private var dragging = false
     @State private var hovering = false
@@ -196,19 +198,30 @@ struct MusicSlider: View {
     @Environment(\.motionReduced) private var reduceMotion
     @Environment(\.motionActive) private var presented
     private var expanded: Bool { dragging || hovering || focused }
+    private var trackHeight: CGFloat { waveform == nil ? 18 : 30 }
     var body: some View {
         GeometryReader { geometry in
             let fraction = ScrubberMath.fraction(value, range: range)
-            let thumb = expanded ? 12.0 : 7.0
+            let thumb = waveform != nil ? (expanded ? 13.0 : 11.0) : (expanded ? 12.0 : 7.0)
+            let tint = waveform == nil ? Palette.green : Palette.primary.opacity(0.9)
             ZStack(alignment: .leading) {
-                Capsule().fill(Palette.muted.opacity(0.17)).frame(height: expanded ? 6 : 3.5)
-                Capsule().fill(Palette.green.gradient).frame(width: max(0, geometry.size.width * fraction), height: expanded ? 6 : 3.5)
+                if let waveform {
+                    ProgressWaveform(visualizer: waveform, playing: playing)
+                        .frame(width: geometry.size.width, height: 20)
+                        .mask(alignment: .leading) {
+                            Rectangle().frame(width: max(0, geometry.size.width * fraction))
+                        }
+                        .offset(y: -10)
+                }
+                Capsule().fill(Palette.muted.opacity(0.22)).frame(height: waveform != nil ? 2.5 : expanded ? 6 : 3.5)
+                Capsule().fill(tint.gradient).frame(width: max(0, geometry.size.width * fraction), height: waveform != nil ? 2.5 : expanded ? 6 : 3.5)
                 Circle().fill(.white).overlay(Circle().stroke(Palette.border))
                     .shadow(color: Palette.shadow, radius: expanded ? 4 : 1, y: 1)
                     .frame(width: thumb, height: thumb)
                     .offset(x: min(max(geometry.size.width * fraction - thumb / 2, 0), max(0, geometry.size.width - thumb)))
             }
-            .frame(height: 18)
+            .frame(height: trackHeight)
+            .offset(y: waveform == nil ? 0 : 6)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { gesture in
@@ -223,7 +236,7 @@ struct MusicSlider: View {
                 })
             .animation(reduceMotion ? nil : Motion.press, value: expanded)
             .animation(smoothUpdates && presented && !dragging && !reduceMotion ? .linear(duration: 0.95) : nil, value: value)
-        }.frame(height: 18).opacity(enabled ? 1 : 0.4)
+        }.frame(height: trackHeight).opacity(enabled ? 1 : 0.4)
             .onHover { hovering = $0 }
             .onChange(of: focused) { _, value in preferences.adjustingSlider = value }
             .onChange(of: presented) { _, visible in
@@ -240,6 +253,7 @@ struct MusicSlider: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(label).accessibilityValue(valueDescription)
+            .accessibilityHint(waveform == nil ? "" : "Waveform motion is decorative unless local audio capture is enabled in Settings")
             .accessibilityAdjustableAction { direction in adjust(direction == .increment ? step : -step) }
             .help(label)
     }

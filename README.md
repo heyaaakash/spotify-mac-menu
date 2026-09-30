@@ -14,10 +14,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml"><img src="https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml/badge.svg" alt="Build and regression checks"></a>
-</p>
-
-<p align="center">
   <a href="screenshots/home-dark.png"><img src="screenshots/home-dark.png" alt="SpotMenu Home in dark appearance, with a persistent player, pinned playlists, and recently played songs" width="320"></a>
   &nbsp;
   <a href="screenshots/home-light.png"><img src="screenshots/home-light.png" alt="The same SpotMenu Home interface in light appearance" width="320"></a>
@@ -32,6 +28,8 @@ An independent, unofficial native Swift app for macOS. Browse and control music 
 | Keep music close | Find your next song | Make it yours |
 | --- | --- | --- |
 | Play/pause, skip, seek, adjust volume, shuffle, repeat, and choose a Spotify device. | Browse playlists, liked songs, recently played tracks, and your queue. Search for tracks, albums, artists, and playlists. | Switch between compact and full players, pin playlists, choose light/dark/automatic appearance, and use keyboard shortcuts. |
+
+Soft, layered waves follow the song’s progress bar. Enable **Settings → Music visuals → Audio-reactive waveform** to match their height to Spotify audio on this Mac (macOS 14.2+ and audio permission). Audio stays in memory. With capture off or unavailable, the waves animate decoratively.
 
 Save or remove liked songs with an Undo action. Cached library metadata stays available for browsing when offline. Spotify still needs a working connection and eligible account for remote playback. See the [feature guide](Docs/FEATURES.md) and [capability matrix](Docs/CAPABILITY_MATRIX.md) for details and validation limits.
 
@@ -60,7 +58,7 @@ All previews use fictional sample data. See [screenshots/README.md](screenshots/
 
 ## Get SpotMenu
 
-The current source version is **1.3.0**. No downloadable release has been published yet; use the source build below. Future verified downloads will appear on the [Releases page](https://github.com/heyaaakash/spotify-mac-menu/releases).
+The current source version is **1.4.2**. No downloadable release has been published yet; use the source build below. Future verified downloads will appear on the [Releases page](https://github.com/heyaaakash/spotify-mac-menu/releases).
 
 Local packages are **ad-hoc signed and not notarized**. A signature check does not mean Apple has verified the app. A downloaded build may be blocked by Gatekeeper; [Apple explains how to open an app from an unidentified developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac). Only allow a download you trust.
 
@@ -68,8 +66,8 @@ Local packages are **ad-hoc signed and not notarized**. A signature check does n
 
 | Requirement | Current status |
 | --- | --- |
-| macOS | Deployment target is macOS 14+. Checked locally on macOS 27.0.1 and in CI on 15.7.9; minimum-version installation still needs testing. |
-| Mac architecture | Apple Silicon checked locally; both architecture CI jobs passed tests and packaging. Intel skips one native-render fixture on the VM; physical Intel use is unverified. |
+| macOS | Deployment target is macOS 14+. Current version checked locally on macOS 27.0.1; minimum-version installation still needs testing. |
+| Mac architecture | Apple Silicon checked locally; arm64 and x86_64 packages built locally. Intel is cross-compiled; physical Intel use is unverified. |
 | Spotify account | An eligible account and a Spotify developer app Client ID are required. Playback controls require Premium. New development-mode apps also require the app owner to have Premium and restrict eligible users. |
 | Playback | Start Spotify on a device first. SpotMenu controls that device; it does not stream audio itself. |
 | Source builds | Swift 6 or later and a compatible macOS SDK/Xcode or command-line tools. |
@@ -104,7 +102,7 @@ cd spotify-mac-menu
 open dist/SpotMenu.app
 ```
 
-Quit an older running copy before opening a rebuilt app. To install the local bundle, copy `dist/SpotMenu.app` into Applications. `./Scripts/package.sh` creates an architecture-specific ZIP and SHA-256 checksum in `dist/`. See [development](Docs/DEVELOPMENT.md) and [release instructions](Docs/RELEASING.md).
+Quit an older running copy before opening a rebuilt app. To install the local bundle, copy `dist/SpotMenu.app` into Applications. `./Scripts/package.sh` creates an architecture-specific ZIP and SHA-256 checksum in `dist/`. `./Scripts/prepare-release.sh` runs local checks, refreshes screenshots, and prepares both architecture ZIPs and checksums. GitHub Actions is disabled; all verification and release preparation run on your Mac. See [development](Docs/DEVELOPMENT.md) and [release instructions](Docs/RELEASING.md).
 
 ## Privacy, help, and license
 

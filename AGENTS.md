@@ -1,6 +1,7 @@
 # Repository instructions
 
 - Use `./Scripts/test.sh` for the existing isolated regression harness. Do not substitute `swift test`: this project uses a standalone native harness rather than an XCTest target.
+- GitHub Actions is disabled. Do not add workflows; use `./Scripts/verify.sh` and `./Scripts/prepare-release.sh` for local verification and release preparation. Cross-compilation does not prove runtime support on the target Mac.
 - Use `./Scripts/package.sh` for release packaging. Important deliverables belong in `dist/`, not `.build/`.
 - `VERSION` and `BUILD_NUMBER` supply bundle metadata. Settings reads the app bundle version. Keep release notes and tags aligned with those files.
 - Generated icons come from `Resources/AppIcon.png`; do not track `Resources/SpotMenu.iconset`, `Resources/SpotMenu.icns`, `.build`, or `dist`.

@@ -7,6 +7,8 @@ SpotMenu uses Swift 6, SwiftUI, AppKit, Combine, CryptoKit, Network, and Securit
 ./Scripts/build-app.sh     # Release app bundle in dist/
 ./Scripts/package.sh       # Architecture-specific ZIP and checksum
 ./Scripts/screenshots.sh   # Native UI previews using sample data
+./Scripts/verify.sh        # Regression checks and native package verification
+./Scripts/prepare-release.sh # Checks, previews, both architecture ZIPs and release files
 ```
 
 Select a working Swift toolchain with `xcode-select`. The scripts honor `SDKROOT`. On this development machine, the macOS 27 command-line SDK lacks the SwiftUI macro plugin required by its interface, so scripts prefer the installed macOS 26.5 SDK when available. Other machines use `xcrun --show-sdk-path`. A full, compatible Xcode installation is recommended; selecting an SDK is not evidence that the app was tested on that OS.
@@ -25,6 +27,7 @@ The build queries SwiftPM for the binary directory rather than relying on a mach
 | `Sources/SpotMenu/Infrastructure.swift` | Library/artwork caches, desktop Automation, responsiveness logs |
 | `Sources/SpotMenu/ContentView.swift` | Onboarding and Home, Search, Library, and Queue |
 | `Sources/SpotMenu/PlayerViews.swift` | Playback, seek, and volume controls |
+| `AudioAnalysis.swift`, `SpotifyAudioCapture.swift`, `AudioVisualizer.swift`, `VisualizerViews.swift` | Spotify process tap, DSP, capture lifecycle, and visualization UI |
 | `Sources/SpotMenu/SettingsView.swift` | Appearance, playback, privacy, and account settings |
 | `Sources/SpotMenu/Components.swift`, `Motion.swift` | Shared native controls, colors, and motion |
 | `Tests/SpotMenuTests/` | Isolated regressions and screenshot renderer |
@@ -44,10 +47,16 @@ For Spotify's own recommendations after the collection, enable **Autoplay** in S
 
 The standalone Swift harness works with command line tools and does not require XCTest. It uses an isolated URLSession mock, temporary caches, isolated preferences, and a fixture token. It never sends requests to Spotify or changes real account credentials.
 
-Checks cover optimistic feedback during a delayed request, command ordering, rollback, rapid heart clicks, Undo, pagination, search cancellation, stale responses after disconnect, rate limits, offline recovery, transfer progress, preference/cache restoration, API decoding, artwork downsampling, collection context playback, and 100 repeated transition/dismissal sequences. Native SwiftUI/AppKit fixtures render Compact, Home, Library, Search, Devices, and Settings in both light and dark appearance to temporary PNGs for visual review. Checks also verify search playback context and offsets, ordered continuation, persisted settings, disabled search history and desktop fallback, Light/Dark overrides returning to Auto, dynamic appearance colors, live appearance notifications across both popovers without resizing, primary/accent text contrast, animation lifecycle gating, bounded waveform levels, and scrubber clamping.
+Checks cover optimistic feedback during a delayed request, command ordering, rollback, rapid heart clicks, Undo, pagination, search cancellation, stale responses after disconnect, rate limits, offline recovery, transfer progress, preference/cache restoration, API decoding, artwork downsampling, collection context playback, and 100 repeated transition/dismissal sequences. Native SwiftUI/AppKit fixtures render Compact, Home, Library, Search, Devices, Settings, live Waveform, and paused Waveform in both light and dark appearance to temporary PNGs for visual review. Checks also verify search playback context and offsets, ordered continuation, persisted settings, disabled search history and desktop fallback, Light/Dark overrides returning to Auto, dynamic appearance colors, live appearance notifications across both popovers without resizing, primary/accent text contrast, animation lifecycle gating, bounded waveform levels, and scrubber clamping.
+
+Six audio checks cover synthetic PCM frequency/loudness, silence and invalid input, bass onset decay, opt-in and suspension, stale callbacks and capture errors, and preference persistence. Native live/paused waveform fixtures inject synthetic measurements through a mock capture; tests never create a real process tap or request audio permission. Capture errors remain visible in Settings during suspension and clear after successful recovery. The integrated seek waveform is bounded and flattens when motion stops. Regression checks also exercise rapidly alternating audio targets and clock-hour boundaries, bounding per-frame changes in the continuously interpolated wave surface.
 
 The local feedback check enforces a 100 ms budget for the mocked control update. This does not measure Spotify's network latency or certify live menu animations; live authenticated behavior should also be exercised in the running app.
 
-## Intel CI rendering limit
+## Local verification and cross-compilation
 
-The hosted `macos-15-intel` VM aborts inside Metal (`Target device architecture is nil`) when the native SwiftUI snapshot fixture renders. Both workflows explicitly set `SPOTMENU_SKIP_UI_RENDER=1` for that VM. The harness reports the one skipped render check separately; all API/state, appearance, motion, slider, and other checks still execute, as does app/ZIP packaging. Apple Silicon CI and normal local runs keep all 30 checks enabled. Intel GUI rendering must be checked on a suitable Mac before claiming it validated.
+GitHub Actions is disabled and no workflow files are maintained. Run `./Scripts/verify.sh` before pushing; add `--screenshots` when previews need refreshing. `./Scripts/prepare-release.sh` performs the checks and previews, then builds both architectures sequentially in separate SwiftPM scratch directories. ZIPs, aggregate checksums, copied release notes, and build provenance are staged in `dist/release-VERSION/`.
+
+`SPOTMENU_ARCH=arm64 ./Scripts/package.sh` or `SPOTMENU_ARCH=x86_64 ./Scripts/package.sh` selects a target with a macOS 14 deployment triple. Without this variable, the host architecture is used. Cross-compilation verifies the target binary and packaging, but cannot establish runtime behavior on the other architecture. Run the harness and open the package on a physical Intel Mac before claiming Intel runtime validation.
+
+The native snapshot fixture requires working macOS graphics. An explicitly requested `SPOTMENU_SKIP_UI_RENDER=1 ./Scripts/test.sh` can diagnose a graphics-limited host; the harness reports its skipped render separately. Release preparation refuses this setting and requires all local checks. Historical hosted-runner results remain in [VALIDATION.md](VALIDATION.md).

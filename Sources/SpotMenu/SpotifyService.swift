@@ -34,6 +34,7 @@ import Security
     @Published var savedNext: String?
     @Published var notice: Notice?
     @Published var cachedDate: Date?
+    let visualizer: AudioVisualizer
     let player: PlayerState
     let preferences: AppPreferences
 
@@ -78,9 +79,10 @@ import Security
     private var detailAlbum: Album?
     private var details: [String: ([Track], String?)] = [:]
 
-    init(session: URLSession = .shared, cache: LibraryCache = .live, defaults: UserDefaults = .standard, initialToken: String? = nil, restore: Bool = true, reconciliationDelay: Duration? = .milliseconds(500), preferences: AppPreferences? = nil) {
+    init(session: URLSession = .shared, cache: LibraryCache = .live, defaults: UserDefaults = .standard, initialToken: String? = nil, restore: Bool = true, reconciliationDelay: Duration? = .milliseconds(500), preferences: AppPreferences? = nil, visualizer: AudioVisualizer? = nil) {
         self.session = session; self.cache = cache; self.defaults = defaults
         self.preferences = preferences ?? AppPreferences(defaults: defaults)
+        self.visualizer = visualizer ?? AudioVisualizer()
         usesKeychain = initialToken == nil; self.reconciliationDelay = reconciliationDelay
         clientID = defaults.string(forKey: "spotifyClientID") ?? ""
         player = PlayerState(defaults: defaults)

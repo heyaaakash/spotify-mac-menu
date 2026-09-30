@@ -1,18 +1,21 @@
 # Capability and validation matrix
 
-Source version: **1.3.0**. This matrix separates implementation, automated checks, and live use. Build or fixture-render success does not establish sign-in, Premium eligibility, real playback, clean installation, or accessibility on every supported Mac.
+Source version: **1.4.2**. This matrix separates implementation, automated checks, and live use. Build or fixture-render success does not establish sign-in, Premium eligibility, real playback, clean installation, or accessibility on every supported Mac.
 
 ## Environments
 
 | Environment | Evidence and limit |
 | --- | --- |
-| Apple Silicon, macOS 27.0.1 | Existing 30-check harness passed on 2026-09-30 after repository extraction. Presentation/build validation is recorded in [VALIDATION.md](VALIDATION.md). |
-| Apple Silicon, macOS 15.7.9 CI | [CI passed](https://github.com/heyaaakash/spotify-mac-menu/actions/runs/36713797814) all 30 mocked/native checks and app/ZIP packaging with Swift 6.1.2. No live Spotify session or installation test. |
+| Apple Silicon, macOS 27.0.1 — 1.4.2 local | `./Scripts/test.sh` passed all 36 checks on 2026-09-30, including synthetic audio analysis, mocked capture, continuous envelope/motion checks, and native live/paused progress-waveform fixtures. No live Spotify audio capture or permission prompt validation. |
+| Apple Silicon, macOS 27.0.1 — 1.3.0 | Existing 30-check harness passed on 2026-09-30 after repository extraction. Presentation/build validation is recorded in [VALIDATION.md](VALIDATION.md). |
+| Historical 1.3.0 hosted checks | Previous Apple Silicon and Intel results are retained in [VALIDATION.md](VALIDATION.md). GitHub Actions is now disabled. |
 | macOS 14 minimum | Declared in `Package.swift` and the app plist. No clean installation or real-user journey recorded here. |
-| Intel Mac | On macOS 15.7.9, [CI passed](https://github.com/heyaaakash/spotify-mac-menu/actions/runs/36713797814) 29 checks and packaging. One native-render fixture is explicitly skipped because the hosted VM aborts in Metal. No physical Intel validation is recorded. |
+| Intel Mac — 1.4.2 | x86_64 release binary cross-compiled locally; ZIP extraction, architecture, plist, signature, bundled license, and SHA-256 verified. No 1.4.2 Intel runtime or physical Intel validation is recorded. |
 | Other macOS releases | No complete version/device matrix recorded. |
 
 ## Features
+
+Historical 1.3.0 hosted evidence predates the optional audio visualizer. Current audio checks are local synthetic/mocked evidence only.
 
 All rows below describe implemented behavior unless marked unsupported. Live Spotify sign-in and playback are **unverified in this release-preparation record**.
 
@@ -29,7 +32,8 @@ All rows below describe implemented behavior unless marked unsupported. Live Spo
 | Desktop Spotify fallback | Disabled-fallback error path is tested | Real Automation allow/deny prompts and Apple Events need testing; basic controls only |
 | Offline and rate limits | Mocked errors, retained metadata, suppressed repeated requests | Offline browsing does not provide offline Spotify playback |
 | Settings and appearance | Persistence, Light/Dark/Auto, dynamic colors, contrast checks | Manual VoiceOver, keyboard-only journey, and performance testing remain open |
-| Motion and artwork | Lifecycle gates, bounded equalizer levels, image downsampling | Equalizer is decorative and reflects playing state, not sampled audio |
+| Motion and artwork | Existing lifecycle gates, bounded decorative equalizer levels, image downsampling | Header and list indicators remain decorative; player indicators and the progress waveform use live audio only when fresh measured frames arrive |
+| Spotify local audio visualizer | Synthetic PCM frequency, RMS, silence, invalid-input and onset tests; mocked capture lifecycle/stale callback tests; native fixture layout | Opt-in Core Audio process tap, Spotify desktop only, macOS 14.2+, and audio-capture permission. Actual capture, allow/deny and recovery flow, physical output devices and perceptual beat alignment remain unverified. No BPM or guaranteed musical beat grid. |
 
 ## Unsupported
 

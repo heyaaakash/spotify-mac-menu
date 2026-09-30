@@ -17,7 +17,7 @@ These features are implemented. Automated checks and live validation are recorde
 - **Music controls:** iPhone-inspired scrubbers expand their track and thumb while interacting and move smoothly during playback. Drag changes stay local until release; keyboard and accessibility adjustments are supported.
 - **Native details:** full-width rows, bounded playlist tiles, current-track states, and accessible control labels. Device lists scroll within the menu. Reduce Motion replaces springs with short fades and freezes decorative playback animations.
 
-Playback polling and the progress timer run while the menu is open. Continuous visual animations stop when the menu is closed, their player mode is hidden, music is paused, or Reduce Motion is enabled. Player animations also stop behind Settings and Devices. Equalizer bars reflect playback state; Spotify does not expose audio samples for an actual audio meter. Artwork processing, cache I/O, JSON decoding, and local Spotify Automation run away from the UI thread. Popover presentation timing is recorded through OSLog under subsystem `com.spotmenu.app`, category `Responsiveness`.
+Playback polling and the progress timer run while the menu is open. Continuous visual animations stop when the menu is closed, their player mode is hidden, music is paused, or Reduce Motion is enabled. Player animations also stop behind Settings and Devices. By default, equalizer bars reflect playback state. With local audio capture enabled, the progress-bar waveform, small player indicators, and artwork pulses react to measured Spotify audio; header and list indicators remain decorative. Audio analysis runs on a dedicated serial queue, with capture frames capped at 30 per second. Only the small waveform draws at up to 60 frames per second while active. Artwork processing, cache I/O, JSON decoding, and local Spotify Automation run away from the UI thread. Popover presentation timing is recorded through OSLog under subsystem `com.spotmenu.app`, category `Responsiveness`.
 
 ## Keyboard shortcuts
 
@@ -32,3 +32,11 @@ Playback polling and the progress timer run while the menu is open. Continuous v
 | Escape | Close an overlay, return from a collection, or dismiss the menu |
 
 If another app has claimed ⌘⇧Space, SpotMenu reports that the shortcut is unavailable.
+
+## Music visuals
+
+The expanded player has one waveform design: three soft, translucent filled waves rise directly from the seek rail and are clipped to the elapsed part of the song. The white thumb, drag seeking, keyboard adjustments, and elapsed/total times remain accessible. Paused playback, hidden players, disabled animations, and Reduce Motion flatten the waves.
+
+Settings → Music visuals contains just **Audio-reactive waveform**, off by default. There are no style or intensity controls. When enabled, a private [Core Audio process tap](https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps) samples only Spotify desktop audio on this Mac (macOS 14.2+ and macOS audio-capture permission required). Measured loudness and bass onsets feed a smooth amplitude envelope while broad crests travel continuously; artwork pulses use detected bass onsets. These pulses are an onset heuristic, not a BPM estimate or guaranteed beat grid.
+
+When fresh measured frames are unavailable, the waves animate decoratively. Settings and the seek control’s accessibility hint explain that distinction without adding a panel or badges to the player. Capture stops for closed menus, paused music, obscured players, disabled animations, and Reduce Motion. Samples remain in memory and are never recorded or uploaded. Capture errors remain visible in Settings; closing Settings or toggling the option off/on retries when playback is active. See [privacy](PRIVACY.md) and the [capability matrix](CAPABILITY_MATRIX.md) for validation limits.
