@@ -21,7 +21,7 @@
 
 <p align="center"><sub>Native SwiftUI views rendered from the app source with fictional account, music, and device data. Artwork is drawn locally for these previews. These images do not demonstrate a live Spotify session.</sub></p>
 
-An independent, unofficial native Swift app for macOS. Browse and control music without leaving your current app. Audio plays on your existing Spotify device. SpotMenu is not affiliated with or endorsed by Spotify.
+An independent, unofficial native Swift app for macOS. Browse and control music without leaving your current app. Playback updates automatically, including when the menu is closed; the refresh button is for library updates. Audio plays on your existing Spotify device. SpotMenu is not affiliated with or endorsed by Spotify.
 
 ## What you can do
 
@@ -58,7 +58,7 @@ All previews use fictional sample data. See [screenshots/README.md](screenshots/
 
 ## Get SpotMenu
 
-The current source version is **1.4.2**. No downloadable release has been published yet; use the source build below. Future verified downloads will appear on the [Releases page](https://github.com/heyaaakash/spotify-mac-menu/releases).
+The current source version is **1.4.3**. No downloadable release has been published yet; use the source build below. Future verified downloads will appear on the [Releases page](https://github.com/heyaaakash/spotify-mac-menu/releases).
 
 Local packages are **ad-hoc signed and not notarized**. A signature check does not mean Apple has verified the app. A downloaded build may be blocked by Gatekeeper; [Apple explains how to open an app from an unidentified developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac). Only allow a download you trust.
 

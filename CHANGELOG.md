@@ -2,7 +2,15 @@
 
 Version metadata comes from `VERSION` and `BUILD_NUMBER`. Future immutable release tags use `vMAJOR.MINOR.PATCH`.
 
-## 1.4.2 — current source, not yet published
+## 1.4.3 — current source, not yet published
+
+- Automatic playback detection continues while the menu is closed, keeping the menu bar playing indicator current.
+- Spotify desktop playback notifications update track/play/pause state immediately on receipt, followed by a Web API reconciliation. Briefly stale or empty responses cannot erase a newer desktop event.
+- Backup polling checks every two seconds while the menu is open, and every five/ten seconds in the background for playing/idle states. Opening the menu, waking the Mac, Spotify launch/quit, and network restoration request an early check.
+- Playback detection no longer waits for liked-song status requests. Dynamic API reads bypass the local HTTP cache.
+- Network failures retry with bounded backoff; notification bursts coalesce and Spotify Retry-After limits remain respected. Disconnect clears pending requests and retry state.
+
+## 1.4.2
 
 - Replaced GitHub Actions with local verification, screenshot generation, arm64/x86_64 packaging, checksums, and an explicit draft-release upload script.
 

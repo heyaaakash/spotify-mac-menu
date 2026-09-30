@@ -22,6 +22,7 @@ The build queries SwiftPM for the binary directory rather than relying on a mach
 | Path | Purpose |
 | --- | --- |
 | `Sources/SpotMenu/SpotMenuApp.swift` | App lifecycle, menu bar popovers, shortcuts, and appearance |
+| `Sources/SpotMenu/PlaybackMonitor.swift` | App-lifetime detection, bounded desktop event parsing, wake/network hints, and polling |
 | `Sources/SpotMenu/SpotifyService.swift` | PKCE authorization, Web API requests, command ordering, recovery |
 | `Sources/SpotMenu/AppState.swift` | Persisted preferences and optimistic player state |
 | `Sources/SpotMenu/Infrastructure.swift` | Library/artwork caches, desktop Automation, responsiveness logs |
@@ -60,3 +61,13 @@ GitHub Actions is disabled and no workflow files are maintained. Run `./Scripts/
 `SPOTMENU_ARCH=arm64 ./Scripts/package.sh` or `SPOTMENU_ARCH=x86_64 ./Scripts/package.sh` selects a target with a macOS 14 deployment triple. Without this variable, the host architecture is used. Cross-compilation verifies the target binary and packaging, but cannot establish runtime behavior on the other architecture. Run the harness and open the package on a physical Intel Mac before claiming Intel runtime validation.
 
 The native snapshot fixture requires working macOS graphics. An explicitly requested `SPOTMENU_SKIP_UI_RENDER=1 ./Scripts/test.sh` can diagnose a graphics-limited host; the harness reports its skipped render separately. Release preparation refuses this setting and requires all local checks. Historical hosted-runner results remain in [VALIDATION.md](VALIDATION.md).
+
+## Automatic playback detection
+
+`PlaybackMonitor` starts at app launch and stops at termination; popover closure does not stop it. It observes Spotify’s `com.spotify.client.PlaybackStateChanged` broadcast, workspace wake and Spotify app lifecycle events, and network restoration. Opening the menu or reconnecting also wakes the same monitor. In-flight fetches are not cancelled by new hints: a burst queues one follow-up. Polling is backed by the Web API with two-second foreground and five/ten-second background intervals, plus bounded failure backoff and global Retry-After handling.
+
+Validated desktop metadata changes the local player on receipt; it never overrides a known active phone/speaker or a pending playback command. Web API enrichment supplies artwork/device details. A three-second reconciliation grace period prevents stale/204 API responses from immediately undoing a desktop event. Broadcast delivery is best-effort and does not provide an instant-detection guarantee; backup polling covers absent or missed notifications, browser playback, and remote devices. Live latency still needs measurement on the installed Spotify version.
+
+Playback refresh releases its request slot before an independent saved-status lookup. Dynamic API requests ignore the local response cache. Session revision checks prevent cancelled old requests from restoring state or errors after disconnect. Ten regressions use mocked HTTP, synthetic desktop events, and monitors with system observation disabled; no real account, distributed broadcasts, or permissions are involved.
+
+References: [Apple distributed notification delivery](https://developer.apple.com/documentation/foundation/distributednotificationcenter), [workspace wake notification](https://developer.apple.com/documentation/appkit/nsworkspace/didwakenotification), [Spotify playback state](https://developer.spotify.com/documentation/web-api/reference/get-information-about-the-users-current-playback), and [Spotify rate limits](https://developer.spotify.com/documentation/web-api/concepts/rate-limits). The desktop event payload is an unofficial interface; its field names/units were cross-checked against a [first-hand broadcast example](https://gist.github.com/loretoparisi/6092634d34e97a062029b078215b6bdc), and fallback polling is retained.

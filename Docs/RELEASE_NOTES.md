@@ -1,12 +1,16 @@
-# SpotMenu 1.4.2 — draft release notes
+# SpotMenu 1.4.3 — draft release notes
 
 A native macOS menu bar companion for Spotify, with compact/full players, Home, Search, Library, Queue, saved-song Undo, device selection, cached browsing, Light/Dark/Auto appearance, and optional Spotify audio visualization.
 
 ## Downloads and installation
 
-The local `./Scripts/prepare-release.sh` script prepares `SpotMenu-1.4.2-macos-arm64.zip`, `SpotMenu-1.4.2-macos-x86_64.zip`, and `SHA256SUMS.txt` in `dist/release-1.4.2/`. Both packages are built locally; the Intel binary is cross-compiled. Uploading a draft requires a clean committed tree and an existing pushed immutable version tag. No download is published yet, and clean installation remains unverified.
+The local `./Scripts/prepare-release.sh` script prepares `SpotMenu-1.4.3-macos-arm64.zip`, `SpotMenu-1.4.3-macos-x86_64.zip`, and `SHA256SUMS.txt` in `dist/release-1.4.3/`. Both packages are built locally; the Intel binary is cross-compiled. Uploading a draft requires a clean committed tree and an existing pushed immutable version tag. No download is published yet, and clean installation remains unverified.
 
 Check the ZIP’s SHA-256 against the release checksum file, unzip it, and move `SpotMenu.app` into Applications. Quit an older copy before replacing it. These builds are **ad-hoc signed and not notarized**. They are not Apple verified; downloaded app launches may be blocked by Gatekeeper. Use Apple’s [unknown-developer instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) only if you trust the download.
+
+## Automatic playback detection
+
+Playback updates without clicking Refresh, including while the menu is closed. Desktop track/play/pause notifications update the UI on receipt. A two-second check while open and five/ten-second playing/idle background checks cover missing notifications and remote playback. Waking the Mac, Spotify launch/quit, network restoration, and reopening the menu request an early check. Saved-status requests no longer hold up playback detection, stale responses receive a short reconciliation grace period, and network failures retry while respecting Spotify’s rate limits. Desktop notification delivery and API latency remain outside SpotMenu’s control; live timing is not yet measured.
 
 ## Music visuals
 

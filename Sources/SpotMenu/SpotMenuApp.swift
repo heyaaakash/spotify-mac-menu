@@ -32,7 +32,7 @@ enum PopoverLayout {
     private var subscriptions = Set<AnyCancellable>()
     private var presentation = PresentationState()
     private var pendingTransition: (Int, PopoverMode)?
-    private var pollingTask: Task<Void, Never>?
+    private lazy var playbackMonitor = PlaybackMonitor(service: spotify)
     private var keyMonitor: Any?
     private var hotKey: EventHotKeyRef?
     private var hotKeyHandler: EventHandlerRef?
@@ -70,11 +70,12 @@ enum PopoverLayout {
             return consumed ? nil : event
         }
         spotify.visualizer.bind(player: spotify.player, preferences: preferences)
+        playbackMonitor.start()
         registerShortcut()
     }
     func applicationWillTerminate(_ notification: Notification) {
         spotify.visualizer.shutdown()
-        pollingTask?.cancel()
+        playbackMonitor.stop()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         if let hotKey { UnregisterEventHotKey(hotKey) }
         if let hotKeyHandler { RemoveEventHandler(hotKeyHandler) }
@@ -120,19 +121,12 @@ enum PopoverLayout {
     }
     func popoverDidClose(_ notification: Notification) {
         preferences.isPresented = false
-        pollingTask?.cancel(); pollingTask = nil
         if let (token, mode) = pendingTransition { scheduleTransition(token, mode) }
         else { presentation.dismiss() }
     }
     func popoverDidShow(_ notification: Notification) {
         preferences.isPresented = true
-        pollingTask?.cancel()
-        pollingTask = Task {
-            while !Task.isCancelled {
-                await spotify.refreshPlayback()
-                try? await Task.sleep(for: .seconds(spotify.player.playback?.is_playing == true ? 6 : 12))
-            }
-        }
+        playbackMonitor.refreshSoon()
     }
     private func handleKey(_ event: NSEvent) -> NSEvent? {
         guard visiblePopover != nil else { return event }

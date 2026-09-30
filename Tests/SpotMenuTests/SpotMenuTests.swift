@@ -14,8 +14,17 @@ private actor StubNetwork {
     static let shared = StubNetwork()
     var requests: [URLRequest] = []
     var handler: @Sendable (URLRequest) -> StubResponse = { _ in .init(status: 204) }
-    func reset(_ handler: @escaping @Sendable (URLRequest) -> StubResponse) { requests = []; self.handler = handler }
-    func response(_ request: URLRequest) -> StubResponse { requests.append(request); return handler(request) }
+    private var playbackResponses: [StubResponse]?
+    func reset(_ handler: @escaping @Sendable (URLRequest) -> StubResponse) { requests = []; self.handler = handler; playbackResponses = nil }
+    func reset(playbackResponses: [StubResponse]) { requests = []; handler = { _ in .init(status: 204) }; self.playbackResponses = playbackResponses }
+    func response(_ request: URLRequest) -> StubResponse {
+        requests.append(request)
+        if request.url?.path == "/v1/me/player", let first = playbackResponses?.first {
+            if playbackResponses!.count > 1 { playbackResponses!.removeFirst() }
+            return first
+        }
+        return handler(request)
+    }
     func history() -> [URLRequest] { requests }
 }
 private final class StubProtocol: URLProtocol, @unchecked Sendable {
@@ -60,7 +69,7 @@ private actor MockAudioCapture: AudioCapturing {
         let defaults = UserDefaults(suiteName: name)!
         defaults.set("fixture-client", forKey: "spotifyClientID")
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-        let service = SpotifyService(session: URLSession(configuration: configuration), cache: LibraryCache(directory: directory), defaults: defaults, initialToken: "fixture-token", restore: false, reconciliationDelay: nil, visualizer: AudioVisualizer(capture: capture ?? MockAudioCapture()))
+        let service = SpotifyService(session: URLSession(configuration: configuration), cache: LibraryCache(directory: directory), defaults: defaults, initialToken: "fixture-token-\(name)", restore: false, reconciliationDelay: nil, visualizer: AudioVisualizer(capture: capture ?? MockAudioCapture()))
         return (service, defaults, directory)
     }
     private var song: Track { Track(id: "one", name: "First song", uri: "spotify:track:one", duration_ms: 240000, artists: [Artist(id: "artist", name: "Test Artist", uri: nil)], album: nil) }
@@ -71,6 +80,201 @@ private actor MockAudioCapture: AudioCapturing {
         expect(condition())
     }
     private func query(_ request: URLRequest, _ name: String) -> String? { URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == name }?.value }
+
+    private var playingResponse: StubResponse {
+        .init(json: #"{"is_playing":true,"progress_ms":1250,"item":{"id":"second","name":"Second song","uri":"spotify:track:second","duration_ms":200000,"album":{"name":"Test album","images":[{"url":"https://example.invalid/test-cover.png"}]}}}"#)
+    }
+    private var pausedResponse: StubResponse {
+        .init(json: #"{"is_playing":false,"progress_ms":5000,"item":{"id":"one","name":"First song","uri":"spotify:track:one","duration_ms":240000}}"#)
+    }
+    private var desktopPlaying: DesktopPlaybackEvent {
+        DesktopPlaybackEvent(["Player State": "Playing", "Track ID": "spotify:track:second", "Name": "Second song", "Artist": "Test Artist", "Album": "Test album", "Duration": 200000, "Playback Position": 1.25])!
+    }
+    private func waitForPlaybackRequests(_ count: Int) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while ContinuousClock.now < deadline {
+            let history = await StubNetwork.shared.history()
+            if history.filter({ $0.url?.path == "/v1/me/player" }).count >= count { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        expect(false)
+    }
+
+    func testDesktopEventsUpdatePlaybackWithoutWaitingForTheAPI() {
+        let (service, _, _) = fixture(); defer { service.disconnect() }
+        service.player.apply(playback(song, playing: false))
+        let start = ContinuousClock.now
+        service.receiveDesktopPlayback(desktopPlaying)
+        expect(start.duration(to: .now) < .milliseconds(100))
+        expect(service.player.playback?.is_playing == true)
+        expect(service.player.playback?.item?.uri == "spotify:track:second")
+        expect(service.player.playback?.progress_ms == 1250)
+        expect(service.player.playback?.item?.duration_ms == 200000)
+        expect(service.player.revision == 1)
+        service.receiveDesktopPlayback(DesktopPlaybackEvent(["Player State": "Paused"])!)
+        expect(service.player.playback?.is_playing == false)
+        service.receiveDesktopPlayback(DesktopPlaybackEvent(["Player State": "Stopped"])!)
+        expect(service.player.playback?.progress_ms == 0)
+        expect(DesktopPlaybackEvent(["Player State": "Unrecognized"]) == nil)
+        let malformed = DesktopPlaybackEvent(["Player State": "Playing", "Track ID": "https://example.invalid/command", "Duration": -1, "Playback Position": Double.infinity])!
+        expect(malformed.uri == nil); expect(malformed.duration == nil); expect(malformed.position == nil)
+        expect(DesktopPlaybackEvent(["Player State": "Playing", "Playback Position": Double.nan])?.position == nil)
+        expect(DesktopPlaybackEvent(["Player State": "Playing", "Name": String(repeating: "x", count: 2049)])?.name == nil)
+    }
+
+    func testDesktopEventsDoNotOverrideAnActiveRemoteDeviceOrCommand() async throws {
+        let (service, _, _) = fixture(); defer { service.disconnect() }
+        var remote = playback(song)
+        remote.device = Device(id: "phone", name: "Test phone", type: "Smartphone", is_active: true, volume_percent: 50, supports_volume: true, is_restricted: false)
+        service.player.apply(remote)
+        service.receiveDesktopPlayback(DesktopPlaybackEvent(["Player State": "Paused"])!)
+        expect(service.player.playback == remote)
+        service.player.apply(playback(song))
+        service.player.pendingCommands = 1
+        service.receiveDesktopPlayback(desktopPlaying)
+        expect(service.player.playback?.item == song)
+        service.player.pendingCommands = 0
+        service.receiveDesktopPlayback(desktopPlaying)
+        let stale = pausedResponse
+        await StubNetwork.shared.reset { request in request.httpMethod == "GET" ? stale : .init(status: 204) }
+        await service.shuffle(); await service.refreshPlayback()
+        expect(service.player.playback?.item?.uri == "spotify:track:second")
+        expect(service.player.playback?.is_playing == true)
+        expect(service.player.playback?.shuffle_state == true)
+        service.disconnect(); service.receiveDesktopPlayback(desktopPlaying)
+        expect(service.player.playback == nil)
+    }
+
+    func testDesktopEventsSurviveStaleAndEmptyAPIResponses() async throws {
+        var stale = pausedResponse; stale.delay = .milliseconds(100)
+        await StubNetwork.shared.reset(playbackResponses: [stale, .init(status: 204), playingResponse])
+        let (service, _, _) = fixture(); defer { service.disconnect() }
+        service.player.apply(playback(song, playing: false))
+        let request = Task { await service.refreshPlayback() }
+        try await waitForPlaybackRequests(1)
+        service.receiveDesktopPlayback(desktopPlaying)
+        await request.value
+        expect(service.player.playback?.is_playing == true)
+        expect(service.player.playback?.item?.uri == "spotify:track:second")
+        try await Task.sleep(for: .milliseconds(510))
+        await service.refreshPlayback()
+        expect(service.player.playback?.item?.uri == "spotify:track:second")
+        try await Task.sleep(for: .milliseconds(510))
+        await service.refreshPlayback()
+        expect(service.player.playback?.item?.imageURL?.absoluteString == "https://example.invalid/test-cover.png")
+        let history = await StubNetwork.shared.history()
+        expect(history.first?.cachePolicy == .reloadIgnoringLocalCacheData)
+    }
+
+    func testSlowSavedStatusDoesNotBlockPlaybackRefresh() async throws {
+        let response = playingResponse
+        await StubNetwork.shared.reset { request in
+            if request.url?.path == "/v1/me/player" { return response }
+            return .init(json: "[false]", delay: .seconds(1))
+        }
+        let (service, _, _) = fixture(); defer { service.disconnect() }
+        let start = ContinuousClock.now
+        await service.refreshPlayback()
+        expect(start.duration(to: .now) < .milliseconds(200))
+        expect(service.player.playback?.is_playing == true)
+        try await Task.sleep(for: .milliseconds(510))
+        await service.refreshPlayback()
+        let history = await StubNetwork.shared.history()
+        let authorization = try require(history.first { $0.url?.path == "/v1/me/player" }?.value(forHTTPHeaderField: "Authorization"))
+        // A cancelled URLProtocol callback from an earlier fixture may still finish
+        // delivery. Count this service's requests rather than another session's.
+        let ownRequests = history.filter { $0.value(forHTTPHeaderField: "Authorization") == authorization }
+        expect(ownRequests.filter { $0.url?.path == "/v1/me/player" }.count == 2)
+        expect(ownRequests.filter { $0.url?.path == "/v1/me/library/contains" }.count == 1)
+    }
+
+    func testBackgroundMonitorDetectsMusicWithTheMenuClosed() async throws {
+        await StubNetwork.shared.reset(playbackResponses: [.init(status: 204), pausedResponse, playingResponse])
+        let (service, _, _) = fixture()
+        service.preferences.isPresented = false
+        let monitor = PlaybackMonitor(service: service, observeSystemEvents: false, pollInterval: .milliseconds(25))
+        defer { monitor.stop(); service.disconnect() }
+        monitor.start(); monitor.start()
+        try await waitUntil { service.player.playback?.is_playing == true }
+        expect(!service.preferences.isPresented)
+        expect(service.player.playback?.item?.uri == "spotify:track:second")
+        let history = await StubNetwork.shared.history()
+        expect(history.filter { $0.url?.path == "/v1/me/player" }.count == 3)
+    }
+
+    func testPlaybackHintsDuringAFetchQueueOneFollowUp() async throws {
+        var stale = pausedResponse; stale.delay = .milliseconds(100)
+        await StubNetwork.shared.reset(playbackResponses: [stale, playingResponse])
+        let (service, _, _) = fixture()
+        let monitor = PlaybackMonitor(service: service, observeSystemEvents: false, pollInterval: .seconds(60))
+        defer { monitor.stop(); service.disconnect() }
+        monitor.start()
+        try await waitForPlaybackRequests(1)
+        for _ in 0..<100 { monitor.receiveDesktopEvent(nil) }
+        try await waitUntil { service.player.playback?.is_playing == true }
+        let history = await StubNetwork.shared.history()
+        expect(history.filter { $0.url?.path == "/v1/me/player" }.count == 2)
+    }
+
+    func testOpeningTheMenuWakesBackgroundPollingAndStopRemovesIt() async throws {
+        await StubNetwork.shared.reset(playbackResponses: [.init(status: 204), playingResponse])
+        let (service, _, _) = fixture()
+        let monitor = PlaybackMonitor(service: service, observeSystemEvents: false)
+        defer { monitor.stop(); service.disconnect() }
+        monitor.start()
+        try await waitForPlaybackRequests(1)
+        service.preferences.isPresented = true
+        try await waitUntil { service.player.playback?.is_playing == true }
+        monitor.stop()
+        let stopped = await StubNetwork.shared.history()
+        try await Task.sleep(for: .milliseconds(550))
+        let later = await StubNetwork.shared.history()
+        expect(stopped.filter { $0.url?.path == "/v1/me/player" }.count == 2)
+        expect(later.filter { $0.url?.path == "/v1/me/player" }.count == 2)
+        monitor.start()
+        try await waitForPlaybackRequests(3)
+    }
+
+    func testPlaybackMonitorRecoversFromNetworkFailureAutomatically() async throws {
+        await StubNetwork.shared.reset(playbackResponses: [.init(failure: .timedOut), playingResponse])
+        let (service, _, _) = fixture()
+        let monitor = PlaybackMonitor(service: service, observeSystemEvents: false, pollInterval: .milliseconds(25))
+        defer { monitor.stop(); service.disconnect() }
+        monitor.start()
+        try await waitUntil { service.offline }
+        expect(service.playbackPollingDelay >= .seconds(1))
+        try await waitUntil { service.player.playback?.is_playing == true }
+        expect(!service.offline); expect(service.error == nil)
+    }
+
+    func testPlaybackHintsRespectRetryAfterWithoutUserRefresh() async throws {
+        await StubNetwork.shared.reset(playbackResponses: [.init(status: 429, headers: ["Retry-After": "1"]), playingResponse])
+        let (service, _, _) = fixture()
+        let monitor = PlaybackMonitor(service: service, observeSystemEvents: false, pollInterval: .milliseconds(25))
+        defer { monitor.stop(); service.disconnect() }
+        monitor.start()
+        try await waitUntil { service.recovery == .wait }
+        for _ in 0..<100 { monitor.receiveDesktopEvent(nil) }
+        try await Task.sleep(for: .milliseconds(300))
+        let before = await StubNetwork.shared.history()
+        expect(before.filter { $0.url?.path == "/v1/me/player" }.count == 1)
+        try await waitUntil { service.player.playback?.is_playing == true }
+        expect(service.error == nil)
+        let after = await StubNetwork.shared.history()
+        expect(after.filter { $0.url?.path == "/v1/me/player" }.count == 2)
+    }
+
+    func testDisconnectPreventsDelayedPlaybackAndErrorsFromReturning() async throws {
+        await StubNetwork.shared.reset(playbackResponses: [.init(delay: .milliseconds(100), failure: .timedOut)])
+        let (service, _, _) = fixture()
+        let request = Task { await service.refreshPlayback() }
+        try await waitForPlaybackRequests(1)
+        service.disconnect(); await request.value
+        expect(service.player.playback == nil); expect(service.error == nil); expect(!service.connected)
+        service.connected = true
+        expect(service.playbackPollingDelay == .seconds(10))
+        service.disconnect()
+    }
 
     func testOptimisticControlsDoNotWaitForTheNetwork() async throws {
         await StubNetwork.shared.reset { _ in .init(status: 204, delay: .milliseconds(250)) }
@@ -680,6 +884,56 @@ private func require<T>(_ value: T?) throws -> T { guard let value else { throw 
     @MainActor static func main() async {
         let checks = SpotMenuTests()
         var passed = 0
+        do {
+            let before = failures.count
+            checks.testDesktopEventsUpdatePlaybackWithoutWaitingForTheAPI()
+            if failures.count == before { passed += 1; print("PASS testDesktopEventsUpdatePlaybackWithoutWaitingForTheAPI") }
+        }
+        do {
+            let before = failures.count
+            try await checks.testDesktopEventsDoNotOverrideAnActiveRemoteDeviceOrCommand()
+            if failures.count == before { passed += 1; print("PASS testDesktopEventsDoNotOverrideAnActiveRemoteDeviceOrCommand") }
+        } catch { failures.append("testDesktopEventsDoNotOverrideAnActiveRemoteDeviceOrCommand: \(error)") }
+        do {
+            let before = failures.count
+            try await checks.testDesktopEventsSurviveStaleAndEmptyAPIResponses()
+            if failures.count == before { passed += 1; print("PASS testDesktopEventsSurviveStaleAndEmptyAPIResponses") }
+        } catch { failures.append("testDesktopEventsSurviveStaleAndEmptyAPIResponses: \(error)") }
+        do {
+            let before = failures.count
+            try await checks.testSlowSavedStatusDoesNotBlockPlaybackRefresh()
+            if failures.count == before { passed += 1; print("PASS testSlowSavedStatusDoesNotBlockPlaybackRefresh") }
+        } catch { failures.append("testSlowSavedStatusDoesNotBlockPlaybackRefresh: \(error)") }
+        do {
+            let before = failures.count
+            try await checks.testBackgroundMonitorDetectsMusicWithTheMenuClosed()
+            if failures.count == before { passed += 1; print("PASS testBackgroundMonitorDetectsMusicWithTheMenuClosed") }
+        } catch { failures.append("testBackgroundMonitorDetectsMusicWithTheMenuClosed: \(error)") }
+        do {
+            let before = failures.count
+            try await checks.testPlaybackHintsDuringAFetchQueueOneFollowUp()
+            if failures.count == before { passed += 1; print("PASS testPlaybackHintsDuringAFetchQueueOneFollowUp") }
+        } catch { failures.append("testPlaybackHintsDuringAFetchQueueOneFollowUp: \(error)") }
+        do {
+            let before = failures.count
+            try await checks.testOpeningTheMenuWakesBackgroundPollingAndStopRemovesIt()
+            if failures.count == before { passed += 1; print("PASS testOpeningTheMenuWakesBackgroundPollingAndStopRemovesIt") }
+        } catch { failures.append("testOpeningTheMenuWakesBackgroundPollingAndStopRemovesIt: \(error)") }
+        do {
+            let before = failures.count
+            try await checks.testPlaybackMonitorRecoversFromNetworkFailureAutomatically()
+            if failures.count == before { passed += 1; print("PASS testPlaybackMonitorRecoversFromNetworkFailureAutomatically") }
+        } catch { failures.append("testPlaybackMonitorRecoversFromNetworkFailureAutomatically: \(error)") }
+        do {
+            let before = failures.count
+            try await checks.testPlaybackHintsRespectRetryAfterWithoutUserRefresh()
+            if failures.count == before { passed += 1; print("PASS testPlaybackHintsRespectRetryAfterWithoutUserRefresh") }
+        } catch { failures.append("testPlaybackHintsRespectRetryAfterWithoutUserRefresh: \(error)") }
+        do {
+            let before = failures.count
+            try await checks.testDisconnectPreventsDelayedPlaybackAndErrorsFromReturning()
+            if failures.count == before { passed += 1; print("PASS testDisconnectPreventsDelayedPlaybackAndErrorsFromReturning") }
+        } catch { failures.append("testDisconnectPreventsDelayedPlaybackAndErrorsFromReturning: \(error)") }
         do {
             let before = failures.count
             checks.testLiveSpectrumMeasuresFrequencyAndLoudness()

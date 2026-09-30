@@ -1,5 +1,22 @@
 # Validation record
 
+## 1.4.3 automatic playback detection — build 8
+
+Date: **2026-10-01**, Asia/Kolkata. Verified locally on Apple Silicon, macOS 27.0.1, Swift 6.4, macOS 26.5 SDK. GitHub Actions remains disabled.
+
+- `./Scripts/prepare-release.sh`: **46 checks passed, 0 failures, 0 skipped**. Ten new regressions cover prompt synthetic desktop event updates, invalid payload bounds, remote/command guards, stale and 204 responses, slow saved-status lookup isolation, closed-menu detection, coalesced in-flight hints, menu wake and monitor stop/restart, automatic network recovery, Retry-After, and disconnect cancellation. Synthetic local state update is checked below 100 ms; that is not real Spotify notification latency.
+- The full existing audio, state, appearance, geometry, API, and native render harness also passed. Test sessions have unique fixture tokens to keep late cancelled mock callbacks separate. All monitors in tests disable system observation; no real Spotify broadcast, account, audio capture, or permission is exercised.
+- Nine screenshots were regenerated and are byte-identical to the previously reviewed 1.4.2 previews; no visual layout change is claimed.
+- Both local ZIPs passed architecture/version/build checks, extraction, strict ad-hoc signature and plist checks, executable/license equality, package file allowlist, and SHA-256. x86_64 is cross-compiled and has no new Intel runtime evidence.
+- Local review assets are in `dist/release-1.4.3/`, with working-tree provenance based on `b4cb43ad2e34f8ee07f69fe3deee07d56ac934d9`. Rebuild from the final clean tagged commit before drafting a release. No tag, release, or Actions run was created.
+
+| Local package | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `SpotMenu-1.4.3-macos-arm64.zip` | 2703717 | `30d782b082786cdf32df08097b2284d61dcf5e5d57c186c617d0dfdceff8e972` |
+| `SpotMenu-1.4.3-macos-x86_64.zip` | 2751433 | `3cd08fa8b74432da1d03a15977bf6f346fd53726f3ee14dcd50bac9c79421ac0` |
+
+Manual validation remains open for the installed Spotify version’s actual broadcasts, real detection/reconciliation latency, wake and network restoration, phone/browser playback, actual audio permission/capture, clean installation, and physical Intel use. The app remains ad-hoc signed and not notarized.
+
 ## 1.4.2 local release preparation — build 7
 
 Verified on 2026-09-30 on Apple Silicon, macOS 27.0.1, Swift 6.4, using the installed macOS 26.5 SDK. GitHub Actions was disabled before the push; both workflow files were removed. Previous hosted results below are historical only.

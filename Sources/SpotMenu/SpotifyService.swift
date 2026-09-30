@@ -57,6 +57,13 @@ import Security
     private var searchTask: Task<Void, Never>?
     private var refreshTask: Task<TokenResponse, Error>?
     private var playbackTask: Task<Playback?, Error>?
+    private var playbackSavedTask: Task<Void, Never>?
+    private var playbackFailures = 0
+    private var playbackRefreshDeferred = false
+    private var playbackError: String?
+    private var lastPlaybackRequest = Date.distantPast
+    private var desktopEvent: DesktopPlaybackEvent?
+    private var desktopEventUntil = Date.distantPast
     private var commandTail: Task<Bool, Never>?
     private var reconcileTask: Task<Void, Never>?
     private var persistTask: Task<Void, Never>?
@@ -172,8 +179,11 @@ import Security
     }
     func disconnect() {
         sessionRevision += 1; cancelConnection()
-        searchTask?.cancel(); refreshTask?.cancel(); playbackTask?.cancel(); commandTail?.cancel(); reconcileTask?.cancel(); persistTask?.cancel(); noticeTask?.cancel()
+        searchTask?.cancel(); refreshTask?.cancel(); playbackTask?.cancel(); playbackSavedTask?.cancel(); commandTail?.cancel(); reconcileTask?.cancel(); persistTask?.cancel(); noticeTask?.cancel()
         if usesKeychain { Keychain.delete("refreshToken") }
+        refreshTask = nil; playbackTask = nil; playbackSavedTask = nil
+        playbackFailures = 0; playbackRefreshDeferred = false; playbackError = nil; lastPlaybackRequest = .distantPast; desktopEvent = nil; desktopEventUntil = .distantPast
+        rateLimitedUntil = .distantPast; expiresAt = .distantPast
         accessToken = nil; refreshToken = nil; connected = false
         player.apply(nil); player.savedIDs = []; player.pendingCommands = 0
         profile = nil; playlists = []; saved = []; recent = []; topTracks = []; queue = []; search = nil
@@ -205,7 +215,7 @@ import Security
         if let refreshTask { return try await refreshTask.value.access_token }
         let epoch = sessionRevision
         let task = Task { try await tokenRequest(["grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": clientID]) }
-        refreshTask = task; defer { refreshTask = nil }
+        refreshTask = task; defer { if epoch == sessionRevision { refreshTask = nil } }
         let token = try await task.value
         guard epoch == sessionRevision else { throw CancellationError() }
         store(token); return token.access_token
@@ -218,10 +228,22 @@ import Security
         guard var components = URLComponents(string: urlString), components.host == "api.spotify.com" else { throw APIError.message("Invalid Spotify URL.") }
         if !query.isEmpty { components.queryItems = query }
         guard let url = components.url else { throw APIError.message("Invalid Spotify URL.") }
-        var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = 15
-        request.setValue("Bearer \(try await validToken())", forHTTPHeaderField: "Authorization")
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData); request.httpMethod = method; request.timeoutInterval = 15
+        do { request.setValue("Bearer \(try await validToken())", forHTTPHeaderField: "Authorization") }
+        catch {
+            guard epoch == sessionRevision else { throw CancellationError() }
+            try Task.checkCancellation(); throw error
+        }
+        guard epoch == sessionRevision else { throw CancellationError() }
+        try Task.checkCancellation()
         if let body { request.httpBody = body; request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
-        let (data, response) = try await session.data(for: request)
+        let result: (Data, URLResponse)
+        do { result = try await session.data(for: request) }
+        catch {
+            guard epoch == sessionRevision else { throw CancellationError() }
+            try Task.checkCancellation(); throw error
+        }
+        let (data, response) = result
         guard epoch == sessionRevision else { throw CancellationError() }
         try Task.checkCancellation()
         guard let response = response as? HTTPURLResponse else { throw APIError.offline }
@@ -329,19 +351,55 @@ import Security
     private func refreshTop(_ epoch: Int) async {
         do { let page: Page<Track>? = try await request("/me/top/tracks", query: [.init(name: "limit", value: "20")]); if epoch == sessionRevision { topTracks = page?.items ?? [] } } catch { report(error) }
     }
-    func refreshPlayback() async {
+    // Foreground checks stay quick even while paused. Background detection never stops.
+    // The service's global Retry-After gate still applies to event-triggered checks.
+    var playbackPollingDelay: Duration {
+        if Date() < rateLimitedUntil { return .seconds(max(1, min(3600, rateLimitedUntil.timeIntervalSinceNow))) }
+        if playbackFailures > 0 { return .seconds(min(30, pow(2, Double(min(playbackFailures, 5))))) }
+        if playbackRefreshDeferred { return .seconds(max(0.01, 0.5 - Date().timeIntervalSince(lastPlaybackRequest))) }
+        return .seconds(preferences.isPresented ? 2 : player.playback?.is_playing == true ? 5 : 10)
+    }
+    func receiveDesktopPlayback(_ event: DesktopPlaybackEvent) {
         guard connected, player.pendingCommands == 0 else { return }
-        if playbackTask != nil { return }
+        // A paused desktop app must not stop the user's active phone/speaker.
+        if let device = player.playback?.device, device.is_active, device.type != "Computer" { return }
+        guard let latest = event.applying(to: player.playback) else { return }
+        player.revision += 1
+        desktopEvent = event; desktopEventUntil = Date().addingTimeInterval(3)
+        player.apply(latest)
+    }
+    func refreshPlayback() async {
+        guard connected, player.pendingCommands == 0, playbackTask == nil else { return }
+        // Coalesce notification bursts without repeatedly hitting the Web API.
+        guard Date() >= rateLimitedUntil else { return }
+        guard Date().timeIntervalSince(lastPlaybackRequest) >= 0.5 else { playbackRefreshDeferred = true; return }
+        playbackRefreshDeferred = false; lastPlaybackRequest = Date()
         let revision = player.revision, epoch = sessionRevision
         let task = Task { try await request("/me/player") as Playback? }
-        playbackTask = task; defer { playbackTask = nil }
+        playbackTask = task; defer { if epoch == sessionRevision { playbackTask = nil } }
         do {
             let latest = try await task.value
-            if revision == player.revision && epoch == sessionRevision && player.pendingCommands == 0 {
-                player.apply(latest)
-                if let track = latest?.item { await checkSaved([track]) }
+            guard epoch == sessionRevision else { return }
+            playbackFailures = 0
+            if let playbackError, error == playbackError { error = nil; recovery = .retry }
+            playbackError = nil
+            guard revision == player.revision, player.pendingCommands == 0 else { return }
+            // Connect can briefly lag a desktop event, or return 204 during a transition.
+            let remote = latest?.device.map { $0.is_active && $0.type != "Computer" } ?? false
+            if !remote, Date() < desktopEventUntil, let desktopEvent, !desktopEvent.agrees(with: latest) { return }
+            player.apply(latest)
+            if let track = latest?.item, playbackSavedTask == nil {
+                playbackSavedTask = Task { [weak self] in
+                    guard let self, epoch == self.sessionRevision, self.connected, !Task.isCancelled else { return }
+                    await self.checkSaved([track])
+                    if epoch == self.sessionRevision { self.playbackSavedTask = nil }
+                }
             }
-        } catch { report(error) }
+        } catch {
+            guard epoch == sessionRevision else { return }
+            if !(error is CancellationError), (error as? URLError)?.code != .cancelled { playbackFailures += 1 }
+            report(error); playbackError = self.error
+        }
     }
     func checkSaved(_ tracks: [Track]) async {
         let unchecked = Array(merge(tracks, []).filter { savedCheckDates[$0.stableID, default: .distantPast].timeIntervalSinceNow < -60 && !pendingSaves.contains($0.stableID) && $0.uri != nil }.prefix(40))
@@ -454,6 +512,7 @@ import Security
 
     @discardableResult private func send(_ path: String, method: String, query: [URLQueryItem] = [], body: Data? = nil, localFallback: String? = nil, refreshAfter: Bool = true) async -> Bool {
         let previous = commandTail, epoch = sessionRevision
+        if path == "/me/player/next" || path == "/me/player/previous" { desktopEvent = nil; desktopEventUntil = .distantPast }
         player.pendingCommands += 1; reconcileTask?.cancel()
         let task = Task { [weak self] () -> Bool in
             if let previous { _ = await previous.value }
@@ -485,6 +544,7 @@ import Security
     }
     private func optimistic(_ field: MutationField, _ mutate: (inout Playback) -> Void) -> Mutation {
         let original = player.playback
+        if field == .playback { desktopEvent = nil; desktopEventUntil = .distantPast }
         player.revision += 1
         let version = player.revision
         if mutationCounts[field, default: 0] == 0 { confirmedPlayback[field] = Mutation(field: field, version: version, value: original) }

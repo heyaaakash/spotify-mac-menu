@@ -4,7 +4,7 @@ All verification, screenshots, packaging, and release preparation run on a Mac. 
 
 ## Prepare locally
 
-1. Update `VERSION`, `BUILD_NUMBER`, `CHANGELOG.md`, and `Docs/RELEASE_NOTES.md`. Current source: 1.4.2, build 7.
+1. Update `VERSION`, `BUILD_NUMBER`, `CHANGELOG.md`, and `Docs/RELEASE_NOTES.md`. Current source: 1.4.3, build 8.
 2. Run `./Scripts/prepare-release.sh`. It runs every native regression check, refreshes fictional-data screenshots, builds arm64 and x86_64 ZIPs sequentially, round-trip verifies each app, and stages both ZIPs, `SHA256SUMS.txt`, release notes, and `BUILD_INFO.txt` in `dist/release-VERSION/`. The host architecture app remains in `dist/SpotMenu.app`.
 3. Review screenshots and update [VALIDATION.md](VALIDATION.md) and [CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md). Cross-compilation verifies the Intel package, not Intel runtime behavior. Perform live sign-in/playback, permission handling, clean installation, upgrade/uninstall, and physical-device testing for the environments you will claim.
 4. Commit the final source, screenshots, and evidence; push it. Generated `dist/` files stay outside Git. Rerun release preparation from that clean commit so its provenance says `source_state=clean` and identifies the exact commit.

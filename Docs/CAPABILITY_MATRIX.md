@@ -1,16 +1,16 @@
 # Capability and validation matrix
 
-Source version: **1.4.2**. This matrix separates implementation, automated checks, and live use. Build or fixture-render success does not establish sign-in, Premium eligibility, real playback, clean installation, or accessibility on every supported Mac.
+Source version: **1.4.3**. This matrix separates implementation, automated checks, and live use. Build or fixture-render success does not establish sign-in, Premium eligibility, real playback, clean installation, or accessibility on every supported Mac.
 
 ## Environments
 
 | Environment | Evidence and limit |
 | --- | --- |
-| Apple Silicon, macOS 27.0.1 — 1.4.2 local | `./Scripts/test.sh` passed all 36 checks on 2026-09-30, including synthetic audio analysis, mocked capture, continuous envelope/motion checks, and native live/paused progress-waveform fixtures. No live Spotify audio capture or permission prompt validation. |
+| Apple Silicon, macOS 27.0.1 — 1.4.3 local | `./Scripts/test.sh` passed all 46 checks on 2026-10-01, including desktop event validation, closed-menu monitoring, queued refreshes, recovery, rate limits, audio analysis, and native view fixtures. Real desktop broadcasts, live sign-in/playback/audio capture, and permission prompts remain unverified. |
 | Apple Silicon, macOS 27.0.1 — 1.3.0 | Existing 30-check harness passed on 2026-09-30 after repository extraction. Presentation/build validation is recorded in [VALIDATION.md](VALIDATION.md). |
 | Historical 1.3.0 hosted checks | Previous Apple Silicon and Intel results are retained in [VALIDATION.md](VALIDATION.md). GitHub Actions is now disabled. |
 | macOS 14 minimum | Declared in `Package.swift` and the app plist. No clean installation or real-user journey recorded here. |
-| Intel Mac — 1.4.2 | x86_64 release binary cross-compiled locally; ZIP extraction, architecture, plist, signature, bundled license, and SHA-256 verified. No 1.4.2 Intel runtime or physical Intel validation is recorded. |
+| Intel Mac — 1.4.3 | x86_64 release binary cross-compiled locally; ZIP extraction, architecture, plist, signature, bundled license, and SHA-256 verified. No 1.4.3 Intel runtime or physical Intel validation is recorded. |
 | Other macOS releases | No complete version/device matrix recorded. |
 
 ## Features
@@ -22,6 +22,7 @@ All rows below describe implemented behavior unless marked unsupported. Live Spo
 | Feature | Automated evidence | Limits / live validation |
 | --- | --- | --- |
 | Compact and expanded players | Native size fixtures; 100 transition/dismissal sequences; appearance changes | Real popover animation and menu-bar interaction need live checks |
+| Automatic playback detection | Ten regressions: immediate synthetic desktop event updates, malformed metadata, remote/command guards, stale and 204 responses, slow saved lookups, closed-menu polling, queued hints, menu wake/monitor stop/restart, network recovery, rate limits, disconnect cancellation | Real Spotify broadcasts and end-to-end detection latency are unverified. Remote/browser playback uses API polling; desktop events are best-effort. |
 | Playback, seek, volume, shuffle, repeat | Mocked optimistic updates, command ordering, rollback, slider clamping | Needs Premium, an active Spotify device, and live playback checks |
 | Liked songs, Undo | Current save/check endpoints, rapid heart changes, rollback, stale-check handling | Account permissions and live library changes need checking |
 | Home and library | Paging/deduplication, snapshot restoration, preferences | Contents depend on Spotify app quota mode and access |
