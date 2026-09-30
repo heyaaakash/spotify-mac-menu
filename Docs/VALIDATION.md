@@ -1,5 +1,20 @@
 # Validation record
 
+## Published v1.4.3 — build 8
+
+Published on **2026-10-01**, Asia/Calcutta, as the [latest GitHub release](https://github.com/heyaaakash/spotify-mac-menu/releases/tag/v1.4.3). The repository remains private. Annotated tag `v1.4.3` points to clean release commit `f6663fe1739062588a73ddd1ab0cdeedee6c03c5`; the tag was pushed before uploading assets.
+
+- The tagged source was rebuilt locally with `./Scripts/prepare-release.sh`: **46 passed, 0 failures, 0 skipped**. Screenshots stayed unchanged, and provenance records `source_state=clean`, version 1.4.3, build 8, and the exact tagged commit.
+- Five assets were uploaded: arm64/x86_64 ZIPs, `SHA256SUMS.txt`, `BUILD_INFO.txt`, and `RELEASE_NOTES.md`. All were downloaded from the draft and compared byte-for-byte with local release assets before publication. Checksums, extracted signatures/plists, version/build, architecture, and bundled license passed for both downloaded ZIPs.
+- Publication was explicit via GitHub CLI after verification. GitHub reports a published non-draft, non-prerelease with all five assets uploaded. GitHub Actions remains disabled; no hosted workflow was used.
+
+| Published ZIP | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `SpotMenu-1.4.3-macos-arm64.zip` | 2703717 | `cf9b794623cfc546d2cf1f3b633365294e2cf5bfa9f1022b72a4fb3cffe8552f` |
+| `SpotMenu-1.4.3-macos-x86_64.zip` | 2751433 | `4857763d09f7bc1b1e9c3606e03a37c5d0ae77a9145812e3832014002e721d9b` |
+
+This verifies build/upload integrity, not a clean installation or live Spotify journey. The packages remain ad-hoc signed and not notarized; Intel is cross-compiled without physical Intel runtime validation. The detailed automated/live limits below remain applicable.
+
 ## 1.4.3 automatic playback detection — build 8
 
 Date: **2026-10-01**, Asia/Kolkata. Verified locally on Apple Silicon, macOS 27.0.1, Swift 6.4, macOS 26.5 SDK. GitHub Actions remains disabled.
