@@ -25,13 +25,16 @@ jobs:
         include:
           - runner: macos-15
             arch: arm64
+            skip_ui_render: '0'
           - runner: macos-15-intel
             arch: x86_64
+            skip_ui_render: '1'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     env:
       RELEASE_TAG: ${{ inputs.tag }}
       SPOTMENU_REGISTER_APP: '0'
+      SPOTMENU_SKIP_UI_RENDER: ${{ matrix.skip_ui_render }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:

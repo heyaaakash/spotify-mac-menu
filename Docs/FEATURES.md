@@ -32,4 +32,3 @@ Playback polling and the progress timer run while the menu is open. Continuous v
 | Escape | Close an overlay, return from a collection, or dismiss the menu |
 
 If another app has claimed ⌘⇧Space, SpotMenu reports that the shortcut is unavailable.
-

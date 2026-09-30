@@ -8,7 +8,7 @@ Source version: **1.3.0**. This matrix separates implementation, automated check
 | --- | --- |
 | Apple Silicon, macOS 27.0.1 | Existing 30-check harness passed on 2026-09-30 after repository extraction. Presentation/build validation is recorded in [VALIDATION.md](VALIDATION.md). |
 | macOS 14 minimum | Declared in `Package.swift` and the app plist. No clean installation or real-user journey recorded here. |
-| Intel Mac | CI targets `macos-15-intel`. See the [Verify workflow](https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml) for actual run results; no physical Intel validation is recorded. |
+| Intel Mac | CI targets `macos-15-intel`. See the [Verify workflow](https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml) for actual run results; native snapshot rendering is explicitly skipped because the hosted VM aborts in Metal. No physical Intel validation is recorded. |
 | Other macOS releases | No complete version/device matrix recorded. |
 
 ## Features

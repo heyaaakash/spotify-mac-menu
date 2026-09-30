@@ -654,11 +654,16 @@ private func require<T>(_ value: T?) throws -> T { guard let value else { throw 
             try await checks.testCollectionPlaybackUsesItsContext()
             if failures.count == before { passed += 1; print("PASS testCollectionPlaybackUsesItsContext") }
         } catch { failures.append("testCollectionPlaybackUsesItsContext: \(error)") }
-        do {
-            let before = failures.count
-            try await checks.testNativeViewsKeepCompactAndExpandedDimensions()
-            if failures.count == before { passed += 1; print("PASS testNativeViewsKeepCompactAndExpandedDimensions") }
-        } catch { failures.append("testNativeViewsKeepCompactAndExpandedDimensions: \(error)") }
+        let skipUIRender = ProcessInfo.processInfo.environment["SPOTMENU_SKIP_UI_RENDER"] == "1"
+        if skipUIRender {
+            print("SKIP testNativeViewsKeepCompactAndExpandedDimensions: native GPU rendering disabled explicitly for the Intel CI VM; run locally on a physical Mac")
+        } else {
+            do {
+                let before = failures.count
+                try await checks.testNativeViewsKeepCompactAndExpandedDimensions()
+                if failures.count == before { passed += 1; print("PASS testNativeViewsKeepCompactAndExpandedDimensions") }
+            } catch { failures.append("testNativeViewsKeepCompactAndExpandedDimensions: \(error)") }
+        }
         do {
             let before = failures.count
             checks.testAnimationLoopsStopWhenHiddenPausedOrReduced()
@@ -680,7 +685,7 @@ private func require<T>(_ value: T?) throws -> T { guard let value else { throw 
             if failures.count == before { passed += 1; print("PASS testPopoverAppearanceFollowsSystemChangesWithoutResizing") }
         } catch { failures.append("testPopoverAppearanceFollowsSystemChangesWithoutResizing: \(error)") }
         for failure in failures { print("FAIL \(failure)") }
-        print("\(passed) checks passed, \(failures.count) failures")
+        print("\(passed) checks passed, \(failures.count) failures, \(skipUIRender ? 1 : 0) skipped")
         if !failures.isEmpty { exit(1) }
     }
 }
