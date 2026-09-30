@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a playback, sign-in, browsing, or interface problem
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check Docs/CAPABILITY_MATRIX.md and Docs/SETUP.md first. Never include tokens, Client IDs, raw callback URLs, private playlist contents, or personal device/account details.
+  - type: input
+    id: version
+    attributes:
+      label: SpotMenu version or commit
+      placeholder: "For example, 1.3.0 built from source"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: macOS version and Mac architecture
+      placeholder: "For example, macOS 27.0.1 on Apple Silicon"
+    validations:
+      required: true
+  - type: dropdown
+    id: app_mode
+    attributes:
+      label: Spotify developer app mode
+      options:
+        - Development mode
+        - Extended quota mode
+        - Unknown
+  - type: dropdown
+    id: premium
+    attributes:
+      label: Spotify Premium
+      options:
+        - Active
+        - Not active
+        - Prefer not to say
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include whether Spotify had an active playback device.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted screenshots or logs
+      description: Optional. Remove account details, tokens, callback URLs, and private content before attaching.

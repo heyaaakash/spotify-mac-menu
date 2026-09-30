@@ -1,82 +1,117 @@
-# SpotMenu
+<p align="center">
+  <img src="Resources/AppIcon.png" alt="SpotMenu app icon" width="104">
+</p>
 
-A native macOS menu bar companion for Spotify. Browse and control music without leaving your current app. Audio plays on your existing Spotify device.
+<h1 align="center">SpotMenu for macOS</h1>
 
-## Build and launch
+<p align="center">Your Spotify player, library, and search — one click from your menu bar.</p>
 
-Requires macOS 14 or later and Swift command line tools or Xcode.
+<p align="center">
+  <a href="#get-spotmenu"><strong>Get SpotMenu</strong></a>
+  · <a href="Docs/SETUP.md">Connect Spotify</a>
+  · <a href="Docs/CAPABILITY_MATRIX.md">Compatibility</a>
+  · <a href="#build-from-source">Build from source</a>
+</p>
 
-The app bundle uses an optimized Release build.
+<p align="center">
+  <a href="https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml"><img src="https://github.com/heyaaakash/spotify-mac-menu/actions/workflows/verify.yml/badge.svg" alt="Build and regression checks"></a>
+</p>
 
-```sh
-./Scripts/build-app.sh
-open dist/SpotMenu.app
-```
+<p align="center">
+  <a href="screenshots/home-dark.png"><img src="screenshots/home-dark.png" alt="SpotMenu Home in dark appearance, with a persistent player, pinned playlists, and recently played songs" width="320"></a>
+  &nbsp;
+  <a href="screenshots/home-light.png"><img src="screenshots/home-light.png" alt="The same SpotMenu Home interface in light appearance" width="320"></a>
+</p>
 
-Quit an already running copy before opening a rebuilt app.
+<p align="center"><sub>Native SwiftUI views rendered from the app source with fictional account, music, and device data. Artwork is drawn locally for these previews. These images do not demonstrate a live Spotify session.</sub></p>
 
-The build generates the macOS app icon from `spotmenu-icon.png`, including all standard and Retina sizes in `Resources/SpotMenu.iconset` and the bundled `Resources/SpotMenu.icns`. To regenerate only the icons, run `./Scripts/build-icon.sh`.
+An independent, unofficial native Swift app for macOS. Browse and control music without leaving your current app. Audio plays on your existing Spotify device. SpotMenu is not affiliated with or endorsed by Spotify.
 
-After signing, the build updates the app folder's modification date and refreshes its Launch Services registration so Finder notices changed icons in an existing `dist/SpotMenu.app`.
+## What you can do
 
-## The experience
+| Keep music close | Find your next song | Make it yours |
+| --- | --- | --- |
+| Play/pause, skip, seek, adjust volume, shuffle, repeat, and choose a Spotify device. | Browse playlists, liked songs, recently played tracks, and your queue. Search for tracks, albums, artists, and playlists. | Switch between compact and full players, pin playlists, choose light/dark/automatic appearance, and use keyboard shortcuts. |
 
-- **Two player sizes:** a 432 × 140 compact player and a 432 × 690 expanded menu. Separate fixed hosting controllers and cancellable transition tokens prevent stale resize/reopen work from moving the content.
-- **A persistent player:** playback, seek, volume, shuffle, repeat, hearts, and device selection stay above Home, Search, Library, and Queue.
-- **Immediate controls:** playback and hearts update locally before a request finishes. Commands are sent in order; failures restore the affected control without erasing other changes. Saved-song changes include an Undo toast.
-- **A populated launch:** playlists, liked songs, recent tracks, and top tracks load from a disk snapshot, then refresh concurrently. Album artwork uses a memory cache, a disk cache, coalesced downloads, and thumbnails sized for the display.
-- **A fuller library:** pin favorite playlists to Home, filter playlists and liked songs, and load additional library and collection pages. Collection play buttons start the playlist or album context.
-- **Search:** a 220 ms debounce, cancellation of stale results, type filters, eight recent searches, and keyboard selection.
-- **Clear recovery:** cached content stays available when offline; expired sessions, unavailable devices, and rate limits get specific recovery actions. Device transfers show progress. Compact mode exposes an error indicator that opens the full recovery view.
-- **Remembered preferences:** player size, selected tab, library filter, pins, browsing position, recent searches, and volume survive relaunches.
-- **Appearance & settings:** choose Auto, Light, or Dark in the scrollable in-menu Settings panel. Auto follows macOS immediately. Persisted options control animations, continuation for individual song selections, desktop playback fallback, recent-search history, and the menu bar playing indicator. Reduce Motion is always respected. Settings has no separate window to open or restore at launch.
-- **Motion:** spring presses and hover lift, bouncing SF Symbols, morphing play/pause, a sliding tab selection pill, collection transitions, sliding sheets, and spring toasts. The Now Playing artwork lifts when playing; five equalizer bars animate smoothly over a softly moving player glow.
-- **Music controls:** iPhone-inspired scrubbers expand their track and thumb while interacting and move smoothly during playback. Drag changes stay local until release; keyboard and accessibility adjustments are supported.
-- **Native details:** full-width rows, bounded playlist tiles, current-track states, and accessible control labels. Device lists scroll within the menu. Reduce Motion replaces springs with short fades and freezes decorative playback animations.
+Save or remove liked songs with an Undo action. Cached library metadata stays available for browsing when offline. Spotify still needs a working connection and eligible account for remote playback. See the [feature guide](Docs/FEATURES.md) and [capability matrix](Docs/CAPABILITY_MATRIX.md) for details and validation limits.
 
-Playback polling and the progress timer run while the menu is open. Continuous visual animations stop when the menu is closed, their player mode is hidden, music is paused, or Reduce Motion is enabled. Player animations also stop behind Settings and Devices. Equalizer bars reflect playback state; Spotify does not expose audio samples for an actual audio meter. Artwork processing, cache I/O, JSON decoding, and local Spotify Automation run away from the UI thread. Popover presentation timing is recorded through OSLog under subsystem `com.spotmenu.app`, category `Responsiveness`.
+<p align="center">
+  <a href="screenshots/compact-dark.png"><img src="screenshots/compact-dark.png" alt="Compact SpotMenu player with playback controls" width="432"></a>
+</p>
 
-## Keyboard shortcuts
+<p align="center"><sub>The compact player keeps the current song and transport controls close. Sample data.</sub></p>
+
+<details>
+<summary>More screenshots: Library, Search, Devices, Settings, and first launch</summary>
+
+| Library | Search |
+| --- | --- |
+| <img src="screenshots/library-dark.png" alt="Liked songs in the Library view" width="300"> | <img src="screenshots/search-dark.png" alt="Track and album search results" width="300"> |
+
+| Devices | Settings |
+| --- | --- |
+| <img src="screenshots/devices-dark.png" alt="Device chooser with fictional Mac, speaker, and phone" width="300"> | <img src="screenshots/settings-dark.png" alt="Appearance and playback preferences in Settings" width="300"> |
+
+<img src="screenshots/setup-dark.png" alt="First-launch Spotify Client ID and connection instructions" width="300">
+
+All previews use fictional sample data. See [screenshots/README.md](screenshots/README.md) for how to regenerate them.
+
+</details>
+
+## Get SpotMenu
+
+The current source version is **1.3.0**. No downloadable release has been published yet; use the source build below. Future verified downloads will appear on the [Releases page](https://github.com/heyaaakash/spotify-mac-menu/releases).
+
+Local packages are **ad-hoc signed and not notarized**. A signature check does not mean Apple has verified the app. A downloaded build may be blocked by Gatekeeper; [Apple explains how to open an app from an unidentified developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac). Only allow a download you trust.
+
+## Requirements and compatibility
+
+| Requirement | Current status |
+| --- | --- |
+| macOS | Deployment target is macOS 14+. Local validation was on macOS 27.0.1; minimum-version installation still needs testing. |
+| Mac architecture | Apple Silicon checked locally. Intel is included in the CI workflow; see its actual results before assuming support. |
+| Spotify account | An eligible account and a Spotify developer app Client ID are required. Playback controls require Premium. New development-mode apps also require the app owner to have Premium and restrict eligible users. |
+| Playback | Start Spotify on a device first. SpotMenu controls that device; it does not stream audio itself. |
+| Source builds | Swift 6 or later and a compatible macOS SDK/Xcode or command-line tools. |
+
+Spotify’s development-mode rules restrict some playlist content. Sign-in, active-device behavior, Automation permission prompts, and real account playback must be checked separately from mocked tests. The [capability matrix](Docs/CAPABILITY_MATRIX.md) records those limits.
+
+## Connect and use
+
+1. Build and open SpotMenu, then click its music-note icon in the menu bar.
+2. Create a Spotify developer app and register **`http://127.0.0.1:8888/callback`** as its redirect URI.
+3. Paste its **Client ID** into SpotMenu and choose **Connect Spotify**. Approve access in your browser.
+4. Start music in Spotify on your Mac or another device, then use SpotMenu’s player.
+
+Follow the [setup and troubleshooting guide](Docs/SETUP.md) for account prerequisites, requested scopes, errors, and device selection. No client secret is needed.
 
 | Shortcut | Action |
 | --- | --- |
 | ⌘⇧Space | Open or close SpotMenu globally |
 | ⌘K | Expand and focus Search |
-| ⌘, | Open Settings in the expanded menu |
-| ↑ / ↓ | Select a search result |
-| Return | Play a song or open a collection |
+| ⌘, | Open Settings |
 | Space | Play/pause when not typing |
+| ↑ / ↓, Return | Choose and activate a search result |
 | Escape | Close an overlay, return from a collection, or dismiss the menu |
 
-If another app has claimed ⌘⇧Space, SpotMenu reports that the shortcut is unavailable.
-
-## Connect Spotify
-
-1. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-2. Add **`http://127.0.0.1:8888/callback`** to its redirect URIs.
-3. Launch SpotMenu, paste the app's **Client ID**, and select **Connect Spotify**.
-4. Approve the requested permissions in your browser, then return to SpotMenu.
-
-Authorization uses PKCE. The refresh token is stored in macOS Keychain; the Client ID and preferences use user defaults. Cached library metadata is stored in `~/Library/Application Support/SpotMenu`; artwork is stored in `~/Library/Caches/SpotMenu/Artwork`. Disconnecting removes the library snapshot and token. Artwork caches are bounded to roughly 50 MB on disk and 30 MB in memory.
-
-Spotify may require Premium for playback controls. Its development mode also limits eligible accounts and playlist content access. SpotMenu uses the current [`/me/library` save endpoint](https://developer.spotify.com/documentation/web-api/reference/save-library-items) and [`/me/library/contains` endpoint](https://developer.spotify.com/documentation/web-api/reference/check-library-contains). The [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide) describes current development mode restrictions. Collections that Spotify does not expose can be opened in Spotify.
-
-When enabled in Settings and a basic playback command fails, SpotMenu can send play, pause, skip, seek, and volume commands to the installed Spotify app through macOS Automation. macOS may prompt for access. These commands have an eight-second timeout.
-
-## Continuous playback
-
-With **Continue searched songs** enabled (the default), selecting a search result starts its album at that exact track using Spotify's documented [`context_uri` and `offset` fields](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback). Selecting a track inside an album or playlist keeps that collection and its selected position, including repeated tracks. Liked Songs and Queue retain up to 99 following loaded songs in order. Context and URI-list playback continue on the Spotify device even while SpotMenu is closed; no background timer tries to restart paused music. The desktop Automation fallback also keeps album/playlist context.
-
-For Spotify's own recommendations after the collection, enable **Autoplay** in Spotify Settings on the playback device. [Spotify's Autoplay guide](https://support.spotify.com/us/article/autoplay/) explains where to find it. SpotMenu cannot read or change this setting through the public Web API. New/development apps cannot call the [Recommendations endpoint](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api), so SpotMenu leaves personalized recommendations to Spotify rather than claiming to generate native Song Radio. If a track has no album metadata or no following loaded songs, its selection can still contain only that track; continuation then depends on Spotify Autoplay.
-
-## Regression checks
+## Build from source
 
 ```sh
+git clone https://github.com/heyaaakash/spotify-mac-menu.git
+cd spotify-mac-menu
 ./Scripts/test.sh
+./Scripts/build-app.sh
+open dist/SpotMenu.app
 ```
 
-The standalone Swift harness works with command line tools and does not require XCTest. It uses an isolated URLSession mock, temporary caches, isolated preferences, and a fixture token. It never sends requests to Spotify or changes real account credentials.
+Quit an older running copy before opening a rebuilt app. To install the local bundle, copy `dist/SpotMenu.app` into Applications. `./Scripts/package.sh` creates an architecture-specific ZIP and SHA-256 checksum in `dist/`. See [development](Docs/DEVELOPMENT.md) and [release instructions](Docs/RELEASING.md).
 
-Checks cover optimistic feedback during a delayed request, command ordering, rollback, rapid heart clicks, Undo, pagination, search cancellation, stale responses after disconnect, rate limits, offline recovery, transfer progress, preference/cache restoration, API decoding, artwork downsampling, collection context playback, and 100 repeated transition/dismissal sequences. Native SwiftUI/AppKit fixtures render Compact, Home, Library, Search, Devices, and Settings in both light and dark appearance to temporary PNGs for visual review. Checks also verify search playback context and offsets, ordered continuation, persisted settings, disabled search history and desktop fallback, Light/Dark overrides returning to Auto, dynamic appearance colors, live appearance notifications across both popovers without resizing, primary/accent text contrast, animation lifecycle gating, bounded waveform levels, and scrubber clamping.
+## Privacy, help, and license
 
-The local feedback check enforces a 100 ms budget for the mocked control update. This does not measure Spotify's network latency or certify live menu animations; live authenticated behavior should also be exercised in the running app.
+SpotMenu talks directly to Spotify for authorization, library data, and playback commands. It stores the refresh token in macOS Keychain and keeps preferences, search history, library metadata, and artwork caches locally. Disconnecting removes the token and library snapshot; preferences and artwork remain. There is no application-owned analytics or telemetry service in the current source. See [privacy and removal](Docs/PRIVACY.md).
+
+Report bugs through [Issues](https://github.com/heyaaakash/spotify-mac-menu/issues/new/choose), with the app version, macOS version, Mac architecture, and redacted reproduction steps. Check [SECURITY.md](SECURITY.md) before reporting a vulnerability. Contributions are described in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+The source is [MIT licensed](LICENSE). See [asset and dependency notes](Docs/ATTRIBUTIONS.md). Spotify names and marks belong to their respective owners.
+
+Copyright © 2026 Aakash Rohilla.

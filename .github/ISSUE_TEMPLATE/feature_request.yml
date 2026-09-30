@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an improvement to SpotMenu
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the user problem and your current workaround.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested behavior
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Spotify API or platform constraints
+      description: If known, link official documentation. Do not include private account data.

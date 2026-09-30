@@ -72,7 +72,7 @@ struct SettingsView: View {
                         }
                         Button("Quit SpotMenu") { NSApp.terminate(nil) }.foregroundStyle(Palette.muted)
                     }.buttonStyle(.plain).font(.system(size: 12))
-                    Text("SpotMenu 1.3.0").font(.system(size: 10)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity).padding(.top, 4)
+                    Text("SpotMenu \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development")").font(.system(size: 10)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity).padding(.top, 4)
                 }.padding(.trailing, 3).padding(.bottom, 10)
             }.tint(Palette.green)
         }

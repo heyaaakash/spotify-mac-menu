@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cd "${0:A:h}/.."
-source_icon="${PWD}/spotmenu-icon.png"
+source_icon="${PWD}/Resources/AppIcon.png"
 iconset="${PWD}/Resources/SpotMenu.iconset"
 mkdir -p "${iconset}"
 

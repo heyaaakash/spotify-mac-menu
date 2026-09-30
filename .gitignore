@@ -1,3 +1,25 @@
+# SwiftPM and generated app bundles
 .build/
+.swiftpm/
 dist/
+Resources/SpotMenu.iconset/
+Resources/SpotMenu.icns
+
+# macOS and local tooling
 .DS_Store
+.AppleDouble
+DerivedData/
+xcuserdata/
+.idea/
+*.swp
+*.log
+*.tmp
+
+# Local configuration and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.key
+*.mobileprovision
