@@ -1,14 +1,14 @@
 #!/bin/zsh
 set -euo pipefail
 cd "${0:A:h}/.."
+source ./Scripts/dist-paths.sh
 export SPOTMENU_REGISTER_APP=0
 ./Scripts/build-app.sh
-version="$(<VERSION)"
-app="${PWD}/dist/SpotMenu.app"
 architecture="$(lipo -archs "${app}/Contents/MacOS/SpotMenu")"
 [[ "$architecture" == arm64 || "$architecture" == x86_64 ]] || { echo "Expected one architecture, got: $architecture" >&2; exit 1; }
 name="SpotMenu-${version}-macos-${architecture}.zip"
-archive="${PWD}/dist/${name}"
+mkdir -p "$packages_dir"
+archive="${packages_dir}/${name}"
 ditto -c -k --keepParent --norsrc "$app" "$archive"
 check_dir="$(mktemp -d "${TMPDIR:-/private/tmp}/spotmenu-package.XXXXXX")"
 trap 'rm -rf -- "$check_dir"' EXIT
@@ -26,5 +26,5 @@ for file in "${check_dir}/SpotMenu.app"/**/*(.DN); do
   relative="${file#${check_dir}/SpotMenu.app/}"
   [[ " $expected " == *" $relative "* ]] || { echo "Unexpected package file: $relative" >&2; exit 1; }
 done
-(cd dist; shasum -a 256 "$name" > "${name}.sha256"; shasum -a 256 -c "${name}.sha256")
+(cd "$packages_dir"; shasum -a 256 "$name" > "${name}.sha256"; shasum -a 256 -c "${name}.sha256")
 echo "Packaged ${archive} (ad-hoc signed; not notarized)"

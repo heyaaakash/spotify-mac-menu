@@ -8,19 +8,15 @@ fi
 export SDKROOT="${SDKROOT:-$(xcrun --show-sdk-path)}"
 export CLANG_MODULE_CACHE_PATH="${TMPDIR:-/private/tmp}/spotmenu-clang-cache"
 
-version="$(<VERSION)"
+source ./Scripts/dist-paths.sh
 build_number="$(<BUILD_NUMBER)"
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid VERSION" >&2; exit 1; }
 [[ "$build_number" =~ ^[0-9]+$ ]] || { echo "Invalid BUILD_NUMBER" >&2; exit 1; }
 
-architecture="${SPOTMENU_ARCH:-$(uname -m)}"
-[[ "$architecture" == arm64 || "$architecture" == x86_64 ]] || { echo "Unsupported SPOTMENU_ARCH: $architecture" >&2; exit 1; }
 build_args=(--disable-sandbox --scratch-path ".build/release-${architecture}" -c release --triple "${architecture}-apple-macosx14.0")
 ./Scripts/build-icon.sh
 swift build "${build_args[@]}" -debug-info-format none
 binary_dir="$(swift build "${build_args[@]}" --show-bin-path)"
 [[ "$(lipo -archs "${binary_dir}/SpotMenu")" == "$architecture" ]] || { echo "Built architecture does not match $architecture" >&2; exit 1; }
-app="${PWD}/dist/SpotMenu.app"
 stage="$(mktemp -d "${TMPDIR:-/private/tmp}/spotmenu-bundle.XXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 bundle="${stage}/SpotMenu.app"
@@ -50,7 +46,7 @@ PLIST
 plutil -lint "${bundle}/Contents/Info.plist"
 codesign --force --sign - "${bundle}"
 codesign --verify --strict --verbose=2 "${bundle}"
-mkdir -p "${PWD}/dist"
+mkdir -p "$app_dir"
 rm -rf -- "${app}"
 mv "${bundle}" "${app}"
 # Finder can keep a cached icon when only files inside an existing app change.

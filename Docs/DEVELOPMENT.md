@@ -4,7 +4,7 @@ SpotMenu uses Swift 6, SwiftUI, AppKit, Combine, CryptoKit, Network, and Securit
 
 ```sh
 ./Scripts/test.sh          # Isolated regression checks
-./Scripts/build-app.sh     # Release app bundle in dist/
+./Scripts/build-app.sh     # Versioned app bundle for the selected architecture
 ./Scripts/package.sh       # Architecture-specific ZIP and checksum
 ./Scripts/screenshots.sh   # Native UI previews using sample data
 ./Scripts/verify.sh        # Regression checks and native package verification
@@ -16,6 +16,41 @@ Select a working Swift toolchain with `xcode-select`. The scripts honor `SDKROOT
 `VERSION` supplies the app version. `BUILD_NUMBER` supplies the bundle build number. Settings reads the bundled version at runtime. Generated icons, compiler output, packaged apps, and temporary render files are excluded from Git.
 
 The build queries SwiftPM for the binary directory rather than relying on a machine-specific output layout. Set `SPOTMENU_REGISTER_APP=0` in automated builds to skip refreshing Launch Services. App and ZIP verification checks the plist, signature, architecture, archive contents, and round-trip extraction. Signing is ad-hoc, without Developer ID or notarization.
+
+## Generated output layout
+
+`Scripts/dist-paths.sh` supplies the shared output paths. App builds read `VERSION`; they never write a root-level app or archive. Versions contain only app bundles, packages, and release snapshots. Promotional media and other non-release output have separate top-level areas:
+
+```text
+dist/
+  1.4.3/
+    apps/
+      arm64/SpotMenu.app
+      x86_64/SpotMenu.app
+    packages/
+      SpotMenu-1.4.3-macos-arm64.zip
+      SpotMenu-1.4.3-macos-arm64.zip.sha256
+      SpotMenu-1.4.3-macos-x86_64.zip
+      SpotMenu-1.4.3-macos-x86_64.zip.sha256
+    release/
+      SpotMenu-1.4.3-macos-arm64.zip
+      SpotMenu-1.4.3-macos-x86_64.zip
+      SHA256SUMS.txt
+      BUILD_INFO.txt
+      RELEASE_NOTES.md
+  media/
+    launch-video/
+    launch-video-vertical/
+  other/                       # other non-release deliverables, when needed
+```
+
+`build-app.sh` replaces only the selected version/architecture app. `package.sh` replaces only that target's working ZIP and checksum. `prepare-release.sh` builds both targets and replaces only the current version's release snapshot after all checks succeed. Its release ZIPs intentionally duplicate the working packages: later single-target builds do not change an already prepared snapshot. Prior versions and media remain untouched. A local build of the same version can differ from a published artifact; release provenance and hashes identify the actual published files.
+
+Open the native app with `open "dist/$(cat VERSION)/apps/$(uname -m)/SpotMenu.app"`. Keep launch-video sources, masters, posters, captions, and media validation together under `dist/media/<project>/`. Keep other non-release deliverables under `dist/other/<task>/`. Neither area is nested under an app version or included in binary release uploads. Older versions may contain only packages or a release snapshot.
+
+For isolated verification, set `SPOTMENU_DIST_ROOT` to a separate absolute directory before running the scripts. The same version/type layout is used there, and existing local release snapshots are preserved. All of `dist/` remains ignored by Git. Compiler caches stay in `.build/`.
+
+Existing flat outputs and `release-<version>` folders were reorganized without changing their archive bytes. Historical validation entries retain the original paths as records of the commands at that time; use the layout above to locate those files now. The launch videos are in `dist/media/`, independent of the app version. Their historical validation records may mention earlier locations.
 
 ## Source layout
 
@@ -56,7 +91,7 @@ The local feedback check enforces a 100 ms budget for the mocked control update.
 
 ## Local verification and cross-compilation
 
-GitHub Actions is disabled and no workflow files are maintained. Run `./Scripts/verify.sh` before pushing; add `--screenshots` when previews need refreshing. `./Scripts/prepare-release.sh` performs the checks and previews, then builds both architectures sequentially in separate SwiftPM scratch directories. ZIPs, aggregate checksums, copied release notes, and build provenance are staged in `dist/release-VERSION/`.
+GitHub Actions is disabled and no workflow files are maintained. Run `./Scripts/verify.sh` before pushing; add `--screenshots` when previews need refreshing. `./Scripts/prepare-release.sh` performs the checks and previews, then builds both architectures sequentially in separate SwiftPM scratch directories. ZIPs, aggregate checksums, copied release notes, and build provenance are staged in `dist/<version>/release/`.
 
 `SPOTMENU_ARCH=arm64 ./Scripts/package.sh` or `SPOTMENU_ARCH=x86_64 ./Scripts/package.sh` selects a target with a macOS 14 deployment triple. Without this variable, the host architecture is used. Cross-compilation verifies the target binary and packaging, but cannot establish runtime behavior on the other architecture. Run the harness and open the package on a physical Intel Mac before claiming Intel runtime validation.
 

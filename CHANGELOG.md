@@ -2,6 +2,10 @@
 
 Version metadata comes from `VERSION` and `BUILD_NUMBER`. Future immutable release tags use `vMAJOR.MINOR.PATCH`.
 
+## Unreleased
+
+- Group app output by version and type: architecture-specific bundles, working packages, and verified release snapshots. Keep launch media in `dist/media/` and other non-release deliverables in `dist/other/`, separate from release versions. Build, packaging, and draft-upload scripts share the same paths; isolated builds can use an alternate output root.
+
 ## 1.4.3 — 2026-10-01
 
 - Automatic playback detection continues while the menu is closed, keeping the menu bar playing indicator current.

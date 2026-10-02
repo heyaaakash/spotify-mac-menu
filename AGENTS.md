@@ -2,7 +2,7 @@
 
 - Use `./Scripts/test.sh` for the existing isolated regression harness. Do not substitute `swift test`: this project uses a standalone native harness rather than an XCTest target.
 - GitHub Actions is disabled. Do not add workflows; use `./Scripts/verify.sh` and `./Scripts/prepare-release.sh` for local verification and release preparation. Cross-compilation does not prove runtime support on the target Mac.
-- Use `./Scripts/package.sh` for release packaging. Important deliverables belong in `dist/`, not `.build/`.
+- Use `./Scripts/package.sh` for release packaging. App builds, packages, and release snapshots belong in `dist/<version>/`, not `.build/`. Source `Scripts/dist-paths.sh` for shared paths: `apps/<architecture>/SpotMenu.app`, `packages/`, and `release/`. Brag/video projects belong in `dist/media/<project>/`; other non-release deliverables belong in `dist/other/<task>/`. Never place promotional or unrelated output inside a release version or release upload; `SPOTMENU_DIST_ROOT` selects an isolated output root.
 - `VERSION` and `BUILD_NUMBER` supply bundle metadata. Settings reads the app bundle version. Keep release notes and tags aligned with those files.
 - Generated icons come from `Resources/AppIcon.png`; do not track `Resources/SpotMenu.iconset`, `Resources/SpotMenu.icns`, `.build`, or `dist`.
 - Preserve command ordering, optimistic rollback, stale-session guards, PKCE state checks, Keychain storage, and the local-only OAuth callback.

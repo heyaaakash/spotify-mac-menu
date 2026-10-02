@@ -105,10 +105,10 @@ git clone https://github.com/heyaaakash/spotify-mac-menu.git
 cd spotify-mac-menu
 ./Scripts/test.sh
 ./Scripts/build-app.sh
-open dist/SpotMenu.app
+open "dist/$(cat VERSION)/apps/$(uname -m)/SpotMenu.app"
 ```
 
-Quit an older running copy before opening a rebuilt app. To install the local bundle, copy `dist/SpotMenu.app` into Applications. `./Scripts/package.sh` creates an architecture-specific ZIP and SHA-256 checksum in `dist/`. `./Scripts/prepare-release.sh` runs local checks, refreshes screenshots, and prepares both architecture ZIPs and checksums. GitHub Actions is disabled; all verification and release preparation run on your Mac. See [development](Docs/DEVELOPMENT.md) and [release instructions](Docs/RELEASING.md).
+Quit an older running copy before opening a rebuilt app. To install the local bundle, copy the bundle from `dist/<version>/apps/<architecture>/SpotMenu.app` into Applications. `./Scripts/package.sh` creates an architecture-specific ZIP and SHA-256 checksum in `dist/<version>/packages/`. `./Scripts/prepare-release.sh` runs local checks, refreshes screenshots, and prepares both architecture ZIPs and checksums in `dist/<version>/release/`. See the [output layout](Docs/DEVELOPMENT.md#generated-output-layout) for versioned app builds/packages/releases and the separate `dist/media/` and `dist/other/` areas. GitHub Actions is disabled; all verification and release preparation run on your Mac. See [development](Docs/DEVELOPMENT.md) and [release instructions](Docs/RELEASING.md).
 
 ## Privacy, help, and license
 
